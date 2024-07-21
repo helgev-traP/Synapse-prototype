@@ -48,7 +48,7 @@ pub type OutputChannel = Channel<NodeResponse, NodeOrder>;
 /// Get a pair of `types::Channel`
 /// # Example
 /// ```
-/// use node_system::node_forest::channel::channel_pair;
+/// use prototype::node_forest::channel::channel_pair;
 ///
 /// #[tokio::main]
 /// async fn main() {
