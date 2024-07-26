@@ -19,6 +19,8 @@ features = ["full"]
 
 [dependencies]
 async-trait = "0.1"
-ffmpeg-next = "7.0.2"
 image = "0.25.1"
-eframe = "0.28.1"
+libc = "0.2"
+
+[build-dependencies]
+bindgen = "0.69.4"
