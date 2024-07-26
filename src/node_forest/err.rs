@@ -1,4 +1,6 @@
-// Errors of NodeCore
+use super::types::SharedAny;
+
+// --- Node connect and disconnect errors ---
 #[derive(Debug, PartialEq)]
 pub enum NodeConnectError {
     NodeIdNotFound,
@@ -13,6 +15,7 @@ pub enum NodeDisconnectError {
     SocketIdNotFound,
 }
 
+// --- Node connection check errors ---
 #[derive(Debug, PartialEq)]
 pub enum NodeConnectionCheckError {
     NodeIdNotFound,
@@ -21,6 +24,7 @@ pub enum NodeConnectionCheckError {
     NotConnected,
 }
 
+// --- Node send order, response errors ---
 #[derive(Debug, PartialEq)]
 pub enum NodeSendOrderError {
 }
@@ -29,4 +33,12 @@ pub enum NodeSendOrderError {
 pub enum NodeSendResponseError {
     ChannelClosed,
     DownstreamNodeIdNotFound,
+}
+
+// --- Node update input default value errors ---
+#[derive(Debug)]
+pub enum UpdateInputDefaultError{
+    NodeIdNotFound(SharedAny),
+    SocketIdNotFound(SharedAny),
+    TypeRejected(SharedAny),
 }

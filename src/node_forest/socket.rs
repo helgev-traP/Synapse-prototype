@@ -13,10 +13,10 @@ use uuid::Uuid;
 use super::{
     channel::{InputChannel, NodeOrder, NodeResponse, OutputChannel},
     err::{
-        NodeConnectError, NodeConnectionCheckError, NodeDisconnectError,
-        NodeSendResponseError,
+        NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, NodeSendResponseError,
+        UpdateInputDefaultError,
     },
-    types::{Envelope, NodeId, Shared, SocketId, TryRecvResult},
+    types::{Envelope, NodeId, SharedAny, SocketId, TryRecvResult},
     FrameCount,
 };
 
@@ -106,7 +106,7 @@ where
         envelope_data: &Envelope,
         envelope_frame: &Envelope,
         frame: FrameCount,
-    ) -> Shared {
+    ) -> SharedAny {
         match self.channel {
             Some(ref mut channel) => {
                 channel
@@ -151,7 +151,7 @@ where
             Some(_) => {
                 self.channel = None;
                 Ok(())
-            },
+            }
             None => Err(NodeDisconnectError::NotConnected),
         }
     }
@@ -176,7 +176,7 @@ where
     OUTPUT: Send + Sync + 'static,
 {
     default: Arc<RwLock<DATA>>,
-    data: Option<Shared>,
+    data: Option<SharedAny>,
     envelope_data: Envelope,
     envelope_frame: Envelope,
     socket: InputSocket<DATA, MEMORY, OUTPUT>,
@@ -212,6 +212,7 @@ where
         }
     }
 
+    /// build chain new
     pub fn new(default: DATA, memory: MEMORY, read: Box<dyn ReadFn<DATA, MEMORY, OUTPUT>>) -> Self {
         Input {
             default: Arc::new(RwLock::new(default)),
@@ -228,19 +229,34 @@ where
         }
     }
 
+    /// build chain
     pub fn envelope_data(mut self, envelope_data: Envelope) -> Self {
         self.envelope_data = envelope_data;
         self
     }
 
+    /// build chain
     pub fn envelope_frame(mut self, envelope_frame: Envelope) -> Self {
         self.envelope_frame = envelope_frame;
         self
     }
 
+    /// build chain
     pub fn fn_frame(mut self, fn_frame: Box<dyn FrameFn>) -> Self {
         self.socket.frame_fn = fn_frame;
         self
+    }
+
+    /// update default data
+    pub fn update_default(&self, update_default: SharedAny) -> Result<(), UpdateInputDefaultError> {
+        match update_default.downcast::<DATA>() {
+            Ok(update) => {
+                let mut default = self.default.write().unwrap();
+                *default = *update;
+                Ok(())
+            }
+            Err(err) => Err(UpdateInputDefaultError::TypeRejected(err)),
+        }
     }
 }
 
@@ -249,14 +265,18 @@ where
 pub trait InputCommon: Send + Sync + 'static {
     fn get_id(&self) -> &SocketId;
     // get data
-    async fn get_clone(&mut self, frame: FrameCount) -> Shared;
-    async fn get_ref<'a>(&'a mut self, frame: FrameCount) -> &'a Shared;
+    async fn get_clone(&mut self, frame: FrameCount) -> SharedAny;
+    async fn get_ref<'a>(&'a mut self, frame: FrameCount) -> &'a SharedAny;
     // connect and disconnect
     async fn connect(&mut self, channel: InputChannel) -> Result<(), NodeConnectError>;
     async fn recv_connection_checker(&mut self) -> Result<Uuid, NodeConnectionCheckError>;
     fn disconnect(&mut self) -> Result<(), NodeDisconnectError>;
     // get upstream socket id
     fn get_upstream_socket_id(&self) -> Option<&SocketId>;
+    // update default
+    fn update_default(&self, update_default: SharedAny) -> Result<(), UpdateInputDefaultError>;
+    // check cache delete request
+    async fn check_cache_delete_request(&mut self) -> bool;
 }
 
 #[async_trait::async_trait]
@@ -270,7 +290,7 @@ where
         &self.id
     }
 
-    async fn get_clone(&mut self, frame: FrameCount) -> Shared {
+    async fn get_clone(&mut self, frame: FrameCount) -> SharedAny {
         // boot socket
         self.socket
             .transcript(
@@ -282,7 +302,7 @@ where
             .await
     }
 
-    async fn get_ref<'a>(&'a mut self, frame: FrameCount) -> &'a Shared {
+    async fn get_ref<'a>(&'a mut self, frame: FrameCount) -> &'a SharedAny {
         // boot socket
         self.data = Some(
             self.socket
@@ -341,18 +361,43 @@ where
     fn get_upstream_socket_id(&self) -> Option<&SocketId> {
         self.socket.get_upstream_socket_id()
     }
+
+    fn update_default(&self, update_default: SharedAny) -> Result<(), UpdateInputDefaultError> {
+        self.update_default(update_default)
+    }
+
+    async fn check_cache_delete_request(&mut self) -> bool {
+        if let Some(ref mut input_channel) = self.socket.channel {
+            let mut is_delete_cache_request = false;
+            loop {
+                match input_channel.channel.try_recv() {
+                    Ok(message) => match message {
+                        NodeResponse::DeleteCache => is_delete_cache_request = true,
+                        _ => panic!(),
+                    },
+                    Err(err) => match err {
+                        mpsc::error::TryRecvError::Empty => break,
+                        mpsc::error::TryRecvError::Disconnected => todo!(),
+                    },
+                };
+            }
+            is_delete_cache_request
+        } else {
+            false
+        }
+    }
 }
 
 // --- Output ---
 
 pub struct Output<OUTPUT: Send + Sync + 'static> {
     id: SocketId,
-    pickup: Box<dyn Fn(&OUTPUT) -> Shared + Send + Sync>,
+    pickup: Box<dyn Fn(&OUTPUT) -> SharedAny + Send + Sync>,
     channels: HashMap<SocketId, OutputChannel>,
 }
 
 impl<OUTPUT: Send + Sync + 'static> Output<OUTPUT> {
-    pub fn new(pickup: Box<dyn Fn(&OUTPUT) -> Shared + Send + Sync>) -> Self {
+    pub fn new(pickup: Box<dyn Fn(&OUTPUT) -> SharedAny + Send + Sync>) -> Self {
         Output {
             id: SocketId::new(),
             pickup,
@@ -464,6 +509,18 @@ impl<OUTPUT: Send + Sync + 'static> Output<OUTPUT> {
                 }
             },
             None => Err(NodeSendResponseError::DownstreamNodeIdNotFound),
+        }
+    }
+
+    pub async fn send_delete_cache(&mut self) {
+        let mut socket_disconnected = Vec::new();
+        for (socket_id, channel) in self.channels.iter_mut() {
+            if let Err(_) = channel.send(NodeResponse::DeleteCache).await {
+                socket_disconnected.push(socket_id.clone());
+            }
+        }
+        for socket_id in socket_disconnected {
+            self.channels.remove(&socket_id);
         }
     }
 
@@ -614,6 +671,20 @@ impl InputTree {
             InputTree::Reef(_) => 1,
         }
     }
+
+    pub async fn check_cache_delete_request(&mut self) -> bool {
+        match self {
+            InputTree::Vec(v) => {
+                for input in v {
+                    if Box::pin(input.check_cache_delete_request()).await {
+                        return true;
+                    }
+                }
+                false
+            }
+            InputTree::Reef(socket) => socket.check_cache_delete_request().await,
+        }
+    }
 }
 
 pub enum OutputTree<OUTPUT>
@@ -636,6 +707,18 @@ where
     fn index(&self, index: usize) -> &Self::Output {
         match self {
             OutputTree::Vec { vec, index: _ } => &vec[index],
+            OutputTree::Reef(_) => panic!("OutputTree::Reef cannot be indexed"),
+        }
+    }
+}
+
+impl<OUTPUT> std::ops::IndexMut<usize> for OutputTree<OUTPUT>
+where
+    OUTPUT: Clone + Send + Sync + 'static,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        match self {
+            OutputTree::Vec { vec, index: _ } => &mut vec[index],
             OutputTree::Reef(_) => panic!("OutputTree::Reef cannot be indexed"),
         }
     }
@@ -731,6 +814,19 @@ where
                 } else {
                     Err(())
                 }
+            }
+        }
+    }
+
+    pub async fn send_delete_cache(&self) {
+        match self {
+            OutputTree::Vec { vec, index: _ } => {
+                for output in vec {
+                    Box::pin(output.send_delete_cache()).await;
+                }
+            }
+            OutputTree::Reef(socket) => {
+                socket.lock().await.send_delete_cache().await;
             }
         }
     }

@@ -4,8 +4,8 @@ use tokio::sync::mpsc::{self, error::SendError};
 use uuid::Uuid;
 
 use super::{
-    err::{NodeConnectError, NodeDisconnectError},
-    types::{NodeId, Shared, SocketId},
+    err::{NodeConnectError, NodeDisconnectError, UpdateInputDefaultError},
+    types::{NodeId, SharedAny, SocketId},
     FrameCount,
 };
 
@@ -194,6 +194,13 @@ pub enum FrontToField {
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     },
+    /// # UpdateInputDefaultValue
+    /// Update the default value of the input socket.
+    UpdateInputDefaultValue {
+        node_id: NodeId,
+        socket_id: SocketId,
+        value: SharedAny,
+    },
 }
 
 pub enum FrontToFieldResult {
@@ -205,6 +212,9 @@ pub enum FrontToFieldResult {
     NodeDisconnect(Result<(), NodeDisconnectError>),
     /// # NodeDisconnectSafeResult
     NodeDisconnectSafe(Result<(), NodeDisconnectError>),
+    /// # UpdateInputDefaultValueResult
+    UpdateInputDefaultValue(Result<(), UpdateInputDefaultError>),
+
 }
 
 // todo Resultに移す
@@ -232,7 +242,7 @@ pub enum NodeOrder {
 pub enum NodeResponse {
     /// Process failed
     ProcessFailed,
-    Shared(Shared),
+    Shared(SharedAny),
     /// Compatible check
     CompatibleCheck {
         type_id: TypeId,
@@ -240,4 +250,6 @@ pub enum NodeResponse {
     },
     /// Handle connection checker anywhere anytime.
     ConnectionChecker(Uuid),
+    /// when default value of input is updated or upstream node is changed.
+    DeleteCache,
 }

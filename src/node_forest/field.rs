@@ -10,9 +10,11 @@ use super::{
     channel::{
         channel_pair, FieldChannel, FrontToField, FrontToFieldResult, InputChannel, OutputChannel,
     },
-    err::{NodeConnectError, NodeConnectionCheckError, NodeDisconnectError},
+    err::{
+        NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
+    },
     node::NodeCoreCommon,
-    types::{NodeId, SocketId},
+    types::{NodeId, SharedAny, SocketId},
 };
 
 // todo いらないかも
@@ -118,7 +120,7 @@ impl NodeField {
                         .await
                 });
                 let downstream_handle = tokio::spawn(async move {
-                    let downstream_node = downstream_node.lock().await;
+                    let mut downstream_node = downstream_node.lock().await;
                     downstream_node
                         .connect_input(ch_downstream, &downstream_node_socket_id)
                         .await
@@ -254,6 +256,23 @@ impl NodeField {
         todo!()
     }
 
+    // update input default of node
+    pub async fn update_input_default(
+        &self,
+        node_id: &NodeId,
+        input_socket_id: &SocketId,
+        default: SharedAny,
+    ) -> Result<(), UpdateInputDefaultError> {
+        if let Some(node) = self.nodes.get(node_id) {
+            node.lock()
+                .await
+                .update_input_default(input_socket_id, default)
+                .await
+        } else {
+            Err(UpdateInputDefaultError::NodeIdNotFound(default))
+        }
+    }
+
     // main loop
 
     pub async fn main_loop(&self, millis: u64) {
@@ -275,6 +294,7 @@ impl NodeField {
                             .lock()
                             .await
                             .try_recv_generic(Box::new(|message: FrontToField| async {
+                                let mut if_shutdown = false;
                                 let result = match message {
                                     FrontToField::Shutdown => {
                                         loop {
@@ -282,6 +302,7 @@ impl NodeField {
                                                 break;
                                             }
                                         }
+                                        if_shutdown = true;
                                         FrontToFieldResult::Shutdown(Ok(()))
                                     }
                                     FrontToField::NodeConnect {
@@ -341,17 +362,24 @@ impl NodeField {
                                             }
                                         }
                                     }
+                                    FrontToField::UpdateInputDefaultValue {
+                                        node_id,
+                                        socket_id,
+                                        value,
+                                    } => FrontToFieldResult::UpdateInputDefaultValue(
+                                        self.update_input_default(&node_id, &socket_id, value)
+                                            .await,
+                                    ),
                                 };
-                                (result, message)
+                                (result, if_shutdown)
                             }))
                             .await
                         {
-                            Ok(message) => match message {
-                                FrontToField::Shutdown => {
+                            Ok(if_shutdown) => {
+                                if if_shutdown {
                                     break 'main_loop;
                                 }
-                                _ => {}
-                            },
+                            }
                             Err(err) => match err {
                                 mpsc::error::TryRecvError::Empty => {
                                     break 'cache_message;
@@ -435,14 +463,14 @@ impl NodeCoreCommon for NodeField {
     }
 
     async fn connect_input(
-        &self,
+        &mut self,
         channel: InputChannel,
         socket_id: &SocketId,
     ) -> Result<(), NodeConnectError> {
         todo!()
     }
 
-    async fn disconnect_input(&self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
+    async fn disconnect_input(&mut self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
         todo!()
     }
 
@@ -450,6 +478,14 @@ impl NodeCoreCommon for NodeField {
         &self,
         socket_id: &SocketId,
     ) -> Result<Uuid, NodeConnectionCheckError> {
+        todo!()
+    }
+
+    async fn update_input_default(
+        &mut self,
+        input_socket_id: &SocketId,
+        default: SharedAny,
+    ) -> Result<(), UpdateInputDefaultError> {
         todo!()
     }
 
@@ -463,13 +499,11 @@ mod tests {
     use core::panic;
     use std::any::TypeId;
 
-    use tokio::time::sleep;
-
     use crate::node_forest::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
         node::NodeCore,
         socket::{Input, InputCommon, InputTree, Output, OutputTree},
-        types::{Envelope, NodeName, Shared},
+        types::{Envelope, NodeName, SharedAny},
         FrameCount,
     };
 
@@ -482,14 +516,14 @@ mod tests {
         // todo
     }
 
-    async fn force_connect_and_disconnect_test_onetime(millis: u64) {
+    async fn connect_and_disconnect_test_onetime(millis: u64) {
         // field
         let (mut field_operation, field) = result_channel_pair(1);
         let mut field = NodeField::new("field".to_string(), field);
 
         // node i64, string
         let (_, node_u64, node_u64_output) = get_u64_node("node_a".to_string(), 0);
-        let (_, node_string, node_string_output) =
+        let (node_string_input, node_string, node_string_output) =
             get_string_node("node_b".to_string(), "node_b.".to_string());
 
         // multiple node
@@ -567,6 +601,11 @@ mod tests {
                 None => todo!(),
             }
 
+            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
+            } else {
+                panic!();
+            }
+
             ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
 
             match ch_call.recv().await.unwrap() {
@@ -599,13 +638,13 @@ mod tests {
                 None => panic!(),
             }
 
-            ch_call.send(NodeOrder::Request { frame: 3 }).await.unwrap();
+            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
 
             match ch_call.recv().await.unwrap() {
                 NodeResponse::Shared(shared) => {
                     assert_eq!(
                         shared.downcast_ref::<String>().unwrap(),
-                        "node_multiple.node_multiple.node_multiple."
+                        "node_multiple.node_multiple."
                     );
                 }
                 _ => panic!(),
@@ -631,15 +670,82 @@ mod tests {
                 None => panic!(),
             }
 
-            // check again: "display default"
+            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
+            } else {
+                panic!();
+            }
 
-            ch_call.send(NodeOrder::Request { frame: 4 }).await.unwrap();
+            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
 
             match ch_call.recv().await.unwrap() {
                 NodeResponse::Shared(shared) => {
                     assert_eq!(
                         shared.downcast_ref::<String>().unwrap(),
-                        "node_b.node_b.node_b.node_b."
+                        "node_b.node_b."
+                    );
+                }
+                _ => panic!(),
+            };
+
+            // dummy update
+            match field_operation
+                .send(FrontToField::UpdateInputDefaultValue {
+                    node_id: node_string_id.clone(),
+                    socket_id: node_string_input.clone(),
+                    value: Box::new("dummy.".to_string()),
+                })
+                .await
+                .unwrap()
+            {
+                Some(result) => match result {
+                    FrontToFieldResult::UpdateInputDefaultValue(result) => {
+                        if let Err(err) = result {
+                            panic!("{:?}", err);
+                        }
+                    }
+                    _ => panic!(),
+                },
+                None => panic!(),
+            }
+
+            // change node_b's default value to "node_b_new"
+            match field_operation
+                .send(FrontToField::UpdateInputDefaultValue {
+                    node_id: node_string_id.clone(),
+                    socket_id: node_string_input.clone(),
+                    value: Box::new("node_b_new.".to_string()),
+                })
+                .await
+                .unwrap()
+            {
+                Some(result) => match result {
+                    FrontToFieldResult::UpdateInputDefaultValue(result) => {
+                        if let Err(err) = result {
+                            panic!("{:?}", err);
+                        }
+                    }
+                    _ => panic!(),
+                },
+                None => panic!(),
+            }
+
+            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
+            } else {
+                panic!();
+            }
+
+            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
+            } else {
+                panic!();
+            }
+
+            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
+
+            match ch_call.recv().await.unwrap() {
+                NodeResponse::Shared(shared) => {
+                    assert_eq!(
+                        shared.downcast_ref::<String>().unwrap(),
+                        "node_b_new.node_b_new."
                     );
                 }
                 _ => panic!(),
@@ -665,7 +771,7 @@ mod tests {
     async fn force_connect_and_disconnect_test() {
         for i in 0..10 {
             for _ in 0..10 {
-                force_connect_and_disconnect_test_onetime(i).await;
+                connect_and_disconnect_test_onetime(i).await;
             }
         }
     }
@@ -754,7 +860,10 @@ mod tests {
                 None => panic!(),
             }
 
-            sleep(tokio::time::Duration::from_millis(10)).await;
+            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
+            } else {
+                panic!();
+            }
 
             // time measurement
             let timer = std::time::Instant::now();
@@ -849,7 +958,7 @@ mod tests {
             })
         }
 
-        fn string_node_pickup(output: &String) -> Shared {
+        fn string_node_pickup(output: &String) -> SharedAny {
             Box::new(output.clone())
         }
 
@@ -898,7 +1007,7 @@ mod tests {
             })
         }
 
-        fn u64_node_pickup(output: &u64) -> Shared {
+        fn u64_node_pickup(output: &u64) -> SharedAny {
             Box::new(output.clone())
         }
 
@@ -968,7 +1077,7 @@ mod tests {
             })
         }
 
-        fn multiple_node_pickup(output: &String) -> Shared {
+        fn multiple_node_pickup(output: &String) -> SharedAny {
             Box::new(output.clone())
         }
 

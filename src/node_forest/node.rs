@@ -8,9 +8,11 @@ use uuid::Uuid;
 
 use super::{
     channel::{Channel, FrontToNode, InputChannel, NodeOrder, NodeToFront, OutputChannel},
-    err::{NodeConnectError, NodeConnectionCheckError, NodeDisconnectError},
+    err::{
+        NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
+    },
     socket::{InputTree, OutputTree},
-    types::{NodeId, NodeName, SocketId},
+    types::{NodeId, NodeName, SharedAny, SocketId},
     FrameCount,
 };
 
@@ -177,12 +179,17 @@ where
     }
 
     pub async fn connect_input(
-        &self,
+        &mut self,
         channel: InputChannel,
         socket_id: &SocketId,
     ) -> Result<(), NodeConnectError> {
         match self.input.lock().await.get_from_id(socket_id) {
-            Ok(socket) => socket.connect(channel).await,
+            Ok(socket) => {
+                socket.connect(channel).await?;
+                self.cache.clear();
+                self.output.lock().await.send_delete_cache().await;
+                Ok(())
+            }
             Err(_) => Err(NodeConnectError::SocketIdNotFound),
         }
     }
@@ -197,10 +204,12 @@ where
         }
     }
 
-    pub async fn disconnect_input(&self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
+    pub async fn disconnect_input(&mut self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
         match self.input.lock().await.get_from_id(socket_id) {
             Ok(socket) => {
                 socket.disconnect()?;
+                self.cache.clear();
+                self.output.lock().await.send_delete_cache().await;
                 Ok(())
             }
             Err(_) => Err(NodeDisconnectError::SocketIdNotFound),
@@ -238,6 +247,24 @@ where
 
     pub fn get_output_mutex(&self) -> Arc<tokio::sync::Mutex<OutputTree<OUTPUT>>> {
         self.output.clone()
+    }
+
+    // update default value of input
+    pub async fn update_input_default(
+        &mut self,
+        input_socket_id: &SocketId,
+        default: SharedAny,
+    ) -> Result<(), UpdateInputDefaultError> {
+        let mut input = self.input.lock().await;
+        match input.get_from_id(input_socket_id) {
+            Ok(socket) => {
+                socket.update_default(default)?;
+                self.cache.clear();
+                self.output.lock().await.send_delete_cache().await;
+                Ok(())
+            }
+            Err(_) => Err(UpdateInputDefaultError::SocketIdNotFound(default)),
+        }
     }
 
     // --- main process ---
@@ -329,6 +356,11 @@ where
     }
 
     pub async fn main(&mut self) {
+        // 0. check cache delete request.
+        if self.input.lock().await.check_cache_delete_request().await {
+            self.cache.clear();
+            self.output.lock().await.send_delete_cache().await;
+        }
         // 1. search request.
         let requests = self.search_request().await;
 
@@ -380,15 +412,20 @@ pub trait NodeCoreCommon: Send + Sync + 'static {
         downstream_socket_id: &SocketId,
     ) -> Result<(), NodeConnectionCheckError>;
     async fn connect_input(
-        &self,
+        &mut self,
         channel: InputChannel,
         socket_id: &SocketId,
     ) -> Result<(), NodeConnectError>;
-    async fn disconnect_input(&self, socket_id: &SocketId) -> Result<(), NodeDisconnectError>;
+    async fn disconnect_input(&mut self, socket_id: &SocketId) -> Result<(), NodeDisconnectError>;
     async fn recv_connection_checker(
         &self,
         socket_id: &SocketId,
     ) -> Result<Uuid, NodeConnectionCheckError>;
+    async fn update_input_default(
+        &mut self,
+        input_socket_id: &SocketId,
+        default: SharedAny,
+    ) -> Result<(), UpdateInputDefaultError>;
     async fn main(&mut self);
 }
 
@@ -452,14 +489,14 @@ where
     }
 
     async fn connect_input(
-        &self,
+        &mut self,
         channel: InputChannel,
         socket_id: &SocketId,
     ) -> Result<(), NodeConnectError> {
         self.connect_input(channel, socket_id).await
     }
 
-    async fn disconnect_input(&self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
+    async fn disconnect_input(&mut self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
         self.disconnect_input(socket_id).await
     }
 
@@ -468,6 +505,14 @@ where
         socket_id: &SocketId,
     ) -> Result<Uuid, NodeConnectionCheckError> {
         self.recv_connection_checker(socket_id).await
+    }
+
+    async fn update_input_default(
+        &mut self,
+        input_socket_id: &SocketId,
+        default: SharedAny,
+    ) -> Result<(), UpdateInputDefaultError> {
+        self.update_input_default(input_socket_id, default).await
     }
 
     async fn main(&mut self) {
@@ -585,7 +630,7 @@ mod tests {
     use super::super::{
         channel::{channel_pair, InputChannel, OutputChannel},
         socket::{Input, InputCommon, Output},
-        types::{Envelope, Shared},
+        types::{Envelope, SharedAny},
     };
 
     use super::*;
@@ -642,7 +687,7 @@ mod tests {
         })
     }
 
-    fn pickup(output: &i64) -> Shared {
+    fn pickup(output: &i64) -> SharedAny {
         Box::new(*output)
     }
 
