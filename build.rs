@@ -1,7 +1,7 @@
 fn main(){
     println!("build.rs");
     for i in env!("Path").split(";") {
-        if i.contains("ffmpeg") {
+        if i != "" {
             println!("cargo:rustc-link-search={}", i);
         }
     }
