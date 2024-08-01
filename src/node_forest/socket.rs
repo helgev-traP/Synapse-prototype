@@ -687,6 +687,7 @@ impl InputTree {
     }
 }
 
+// todo: indexを削除
 pub enum OutputTree<OUTPUT>
 where
     OUTPUT: Clone + Send + Sync + 'static,
@@ -728,13 +729,20 @@ impl<OUTPUT> OutputTree<OUTPUT>
 where
     OUTPUT: Clone + Send + Sync + 'static,
 {
-    pub fn new(output: Output<OUTPUT>) -> Self {
+    pub fn new_reef(output: Output<OUTPUT>) -> Self {
         OutputTree::Reef(Arc::new(Mutex::new(output)))
     }
 
-    pub fn new_vec() -> Self {
+    pub fn new_empty_vec() -> Self {
         OutputTree::Vec {
             vec: Vec::new(),
+            index: Mutex::new(0),
+        }
+    }
+
+    pub fn new_vec(vec: Vec<OutputTree<OUTPUT>>) -> Self {
+        OutputTree::Vec {
+            vec,
             index: Mutex::new(0),
         }
     }

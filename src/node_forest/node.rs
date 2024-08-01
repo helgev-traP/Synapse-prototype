@@ -204,7 +204,10 @@ where
         }
     }
 
-    pub async fn disconnect_input(&mut self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
+    pub async fn disconnect_input(
+        &mut self,
+        socket_id: &SocketId,
+    ) -> Result<(), NodeDisconnectError> {
         match self.input.lock().await.get_from_id(socket_id) {
             Ok(socket) => {
                 socket.disconnect()?;
@@ -218,15 +221,20 @@ where
 
     // cache
 
-    pub fn change_cache_size(&mut self, new_cache_size: usize) {
-        self.cache.change_size(new_cache_size);
+    pub async fn change_cache_depth(&mut self, new_cache_size: usize) {
+        let number_of_output = self.output.lock().await.size();
+        self.cache.change_size(new_cache_size * number_of_output);
     }
 
     pub fn clear_cache(&mut self) {
         self.cache.clear();
     }
 
-    pub fn cache_len(&self) -> usize {
+    pub async fn cache_depth(&self) -> usize {
+        self.cache.len() / self.output.lock().await.size()
+    }
+
+    pub fn cache_size(&self) -> usize {
         self.cache.len()
     }
 
@@ -391,9 +399,10 @@ pub trait NodeCoreCommon: Send + Sync + 'static {
     fn get_id(&self) -> &NodeId;
     fn get_name(&self) -> &String;
     fn set_name(&mut self, name: String);
-    fn change_cache_size(&mut self, new_cache_size: usize);
+    async fn change_cache_depth(&mut self, new_cache_size: usize);
     fn clear_cache(&mut self);
-    fn cache_len(&self) -> usize;
+    async fn cache_depth(&self) -> usize;
+    fn cache_size(&self) -> usize;
     async fn connect_output(
         &self,
         channel: OutputChannel,
@@ -447,16 +456,20 @@ where
         self.set_name(name)
     }
 
-    fn change_cache_size(&mut self, new_cache_size: usize) {
-        self.change_cache_size(new_cache_size)
+    async fn change_cache_depth(&mut self, new_cache_size: usize) {
+        self.change_cache_depth(new_cache_size).await
     }
 
     fn clear_cache(&mut self) {
         self.clear_cache()
     }
 
-    fn cache_len(&self) -> usize {
-        self.cache_len()
+    async fn cache_depth(&self) -> usize {
+        self.cache_depth().await
+    }
+
+    fn cache_size(&self) -> usize {
+        self.cache_size()
     }
 
     async fn connect_output(
@@ -703,7 +716,7 @@ mod tests {
                 InputTree::Reef(input),
                 (),
                 Box::new(node_process),
-                OutputTree::new(output),
+                OutputTree::new_reef(output),
             )),
             output_id,
         )

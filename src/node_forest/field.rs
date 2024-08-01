@@ -424,7 +424,7 @@ impl NodeCoreCommon for NodeField {
     fn set_name(&mut self, name: String) {
         todo!()
     }
-    fn change_cache_size(&mut self, new_cache_size: usize) {
+    async fn change_cache_depth(&mut self, new_cache_size: usize) {
         todo!()
     }
 
@@ -432,7 +432,11 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    fn cache_len(&self) -> usize {
+    async fn cache_depth(&self) -> usize {
+        todo!()
+    }
+
+    fn cache_size(&self) -> usize {
         todo!()
     }
 
@@ -522,12 +526,12 @@ mod tests {
         let mut field = NodeField::new("field".to_string(), field);
 
         // node i64, string
-        let (_, node_u64, node_u64_output) = get_u64_node("node_a".to_string(), 0);
-        let (node_string_input, node_string, node_string_output) =
+        let (_, mut node_u64, node_u64_output, _) = get_u64_node("node_a".to_string(), 0);
+        let (node_string_input, mut node_string, node_string_output) =
             get_string_node("node_b".to_string(), "node_b.".to_string());
 
         // multiple node
-        let (u64_input, string_input, node_multiple, node_multiple_output) =
+        let (u64_input, string_input, mut node_multiple, node_multiple_output) =
             get_multiple_node("node_multiple".to_string(), 1, "node_multiple.".to_string());
 
         // below is todo
@@ -539,6 +543,21 @@ mod tests {
         let node_u64_id = node_u64.get_id().clone();
         let node_string_id = node_string.get_id().clone();
         let node_multiple_id = node_multiple.get_id().clone();
+
+        // set cache depth
+        node_u64.change_cache_depth(10).await;
+        node_string.change_cache_depth(10).await;
+        node_multiple.change_cache_depth(10).await;
+
+        // check cache depth
+        assert_eq!(node_u64.cache_depth().await, 10);
+        assert_eq!(node_string.cache_depth().await, 10);
+        assert_eq!(node_multiple.cache_depth().await, 10);
+
+        // check cache size
+        assert_eq!(node_u64.cache_size(), 20);
+        assert_eq!(node_string.cache_size(), 10);
+        assert_eq!(node_multiple.cache_size(), 10);
 
         // node field
         let handle_field = tokio::spawn(async move {
@@ -679,10 +698,7 @@ mod tests {
 
             match ch_call.recv().await.unwrap() {
                 NodeResponse::Shared(shared) => {
-                    assert_eq!(
-                        shared.downcast_ref::<String>().unwrap(),
-                        "node_b.node_b."
-                    );
+                    assert_eq!(shared.downcast_ref::<String>().unwrap(), "node_b.node_b.");
                 }
                 _ => panic!(),
             };
@@ -979,7 +995,7 @@ mod tests {
                     InputTree::Reef(input),
                     (),
                     Box::new(string_node_process),
-                    OutputTree::new(output),
+                    OutputTree::new_reef(output),
                 )),
                 output_id,
             )
@@ -1014,13 +1030,15 @@ mod tests {
         pub fn get_u64_node(
             name: String,
             default: u64,
-        ) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId) {
+        ) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId, SocketId) {
             let input =
                 Box::new(Input::new(default, (), Box::new(u64_node_read))) as Box<dyn InputCommon>;
             let input_id = input.get_id().clone();
 
-            let output = Output::new(Box::new(u64_node_pickup));
-            let output_id = output.get_id().clone();
+            let output1 = Output::new(Box::new(u64_node_pickup));
+            let output2 = Output::new(Box::new(u64_node_pickup));
+            let output1_id = output1.get_id().clone();
+            let output2_id = output2.get_id().clone();
             (
                 input_id,
                 Box::new(NodeCore::new(
@@ -1028,9 +1046,10 @@ mod tests {
                     InputTree::Reef(input),
                     (),
                     Box::new(u64_node_process),
-                    OutputTree::new(output),
+                    OutputTree::new_vec(vec![OutputTree::new_reef(output1), OutputTree::new_reef(output2)]),
                 )),
-                output_id,
+                output1_id,
+                output2_id,
             )
         }
 
@@ -1113,7 +1132,7 @@ mod tests {
                     ]),
                     (),
                     Box::new(multiple_node_process),
-                    OutputTree::new(output),
+                    OutputTree::new_reef(output),
                 )),
                 output_id,
             )
