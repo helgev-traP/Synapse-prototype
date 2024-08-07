@@ -522,7 +522,7 @@ mod tests {
     use core::panic;
     use std::any::TypeId;
 
-    use crate::node::{
+    use crate::renderer::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
         node::NodeCore,
         socket::{Input, InputCommon, InputTree, Output, OutputTree},
@@ -965,7 +965,7 @@ mod tests {
     mod nodes {
         use std::{sync::Arc, vec};
 
-        use crate::node::{
+        use crate::renderer::{
             node::NodeCoreCommon,
             types::{NodeId, SocketId},
         };
