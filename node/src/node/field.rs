@@ -14,7 +14,7 @@ use super::{
         NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
     },
     node::NodeCoreCommon,
-    types::{NodeId, SharedAny, SocketId},
+    types::{FromToBinary, NodeId, SharedAny, SocketId},
 };
 
 // todo いらないかも
@@ -498,12 +498,31 @@ impl NodeCoreCommon for NodeField {
     }
 }
 
+#[async_trait::async_trait]
+impl FromToBinary for NodeField {
+    async fn from_binary(binary: Arc<std::sync::RwLock<&[u8]>>) -> Result<Self, ()> {
+        let seek: usize = 0;
+        // read node field data
+        todo!();
+
+        // read nodes data
+        todo!();
+
+        // add nodes to node field
+        todo!();
+    }
+
+    fn to_binary(&self) -> Vec<u8> {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::panic;
     use std::any::TypeId;
 
-    use crate::node_forest::{
+    use crate::node::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
         node::NodeCore,
         socket::{Input, InputCommon, InputTree, Output, OutputTree},
@@ -946,7 +965,7 @@ mod tests {
     mod nodes {
         use std::{sync::Arc, vec};
 
-        use crate::node_forest::{
+        use crate::node::{
             node::NodeCoreCommon,
             types::{NodeId, SocketId},
         };
@@ -1046,7 +1065,10 @@ mod tests {
                     InputTree::Reef(input),
                     (),
                     Box::new(u64_node_process),
-                    OutputTree::new_vec(vec![OutputTree::new_reef(output1), OutputTree::new_reef(output2)]),
+                    OutputTree::new_vec(vec![
+                        OutputTree::new_reef(output1),
+                        OutputTree::new_reef(output2),
+                    ]),
                 )),
                 output1_id,
                 output2_id,

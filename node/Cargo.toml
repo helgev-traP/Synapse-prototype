@@ -1,0 +1,24 @@
+[package]
+name = "node"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies.uuid]
+version = "1.8.0"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]
+
+[dependencies.tokio]
+version = "1.38.0"
+features = ["full"]
+
+[dependencies]
+async-trait = "0.1"
+image = "0.25.1"
+libc = "0.2"
+
+[build-dependencies]
+bindgen = "0.69.4"

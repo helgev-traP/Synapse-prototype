@@ -1,19 +1,19 @@
 use super::channel::NodeOrder;
 use super::BYTES;
 use std::any::Any;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 /// # FromBinary
-/// Trait for convert from binary.
-pub trait FromBinary {
-    fn from_binary(&self) -> Self
+/// trait for convert binary to struct.
+#[async_trait::async_trait]
+pub trait FromToBinary {
+    /// make something from binary when its size is known.
+    async fn from_binary(binary: Arc<RwLock<&[u8]>>) -> Result<Self, ()>
     where
         Self: Sized;
-}
 
-/// # ToBinary
-/// Trait for convert to binary.
-pub trait ToBinary {
+    /// convert Self to binary.
     fn to_binary(&self) -> Vec<u8>;
 }
 
