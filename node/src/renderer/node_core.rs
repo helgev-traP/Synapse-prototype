@@ -378,17 +378,6 @@ where
                 .await;
         }
     }
-
-    #[cfg(test)]
-    pub async fn debug_test_main(
-        &mut self,
-        frame: FrameCount,
-        socket_id: &SocketId,
-        downstream_socket_id: &SocketId,
-    ) {
-        self.for_each_request(frame, socket_id, downstream_socket_id)
-            .await;
-    }
 }
 
 // --- NodeCoreCommon ---

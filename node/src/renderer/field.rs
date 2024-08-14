@@ -273,7 +273,26 @@ impl NodeField {
         }
     }
 
-    // main loop
+    // main process
+
+    pub async fn main_oneshot(&self) {
+        let mut handles = Vec::new();
+
+        for (_, node) in self.nodes.iter() {
+            // execute node's main
+            let node = node.clone();
+
+            // task spawn
+            handles.push(tokio::spawn(async move {
+                let mut node = node.lock().await;
+                (*node).main().await;
+            }));
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+    }
 
     pub async fn main_loop(&self, millis: u64) {
         // tokio 時間計測
