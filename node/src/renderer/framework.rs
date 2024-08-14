@@ -1,4 +1,4 @@
-use super::node::NodeCoreCommon;
+use super::node_core::NodeCoreCommon;
 
 pub trait NodeFramework {
     fn new() -> Box<dyn NodeCoreCommon>;

@@ -1,7 +1,7 @@
 pub mod renderer;
 
 pub use renderer::types;
-pub use renderer::node;
+pub use renderer::node_core;
 pub use renderer::socket;
 pub use renderer::channel;
 pub use renderer::err;

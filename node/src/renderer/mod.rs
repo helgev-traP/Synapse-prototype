@@ -1,5 +1,5 @@
 pub mod types;
-pub mod node;
+pub mod node_core;
 pub mod socket;
 pub mod channel;
 pub mod err;

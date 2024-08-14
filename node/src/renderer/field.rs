@@ -13,7 +13,7 @@ use super::{
     err::{
         NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
     },
-    node::NodeCoreCommon,
+    node_core::NodeCoreCommon,
     types::{FromToBinary, NodeId, SharedAny, SocketId},
 };
 
@@ -524,7 +524,7 @@ mod tests {
 
     use crate::renderer::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
-        node::NodeCore,
+        node_core::NodeCore,
         socket::{Input, InputCommon, InputTree, Output, OutputTree},
         types::{Envelope, NodeName, SharedAny},
         FrameCount,
@@ -966,7 +966,7 @@ mod tests {
         use std::{sync::Arc, vec};
 
         use crate::renderer::{
-            node::NodeCoreCommon,
+            node_core::NodeCoreCommon,
             types::{NodeId, SocketId},
         };
 
