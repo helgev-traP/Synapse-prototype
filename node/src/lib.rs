@@ -1,12 +1,12 @@
-pub mod renderer;
+mod node;
 
-pub use renderer::types;
-pub use renderer::node_core;
-pub use renderer::socket;
-pub use renderer::channel;
-pub use renderer::err;
-pub use renderer::field;
-pub use renderer::framework;
+pub use node::types;
+pub use node::node_core;
+pub use node::socket;
+pub use node::channel;
+pub use node::err;
+pub use node::field;
+pub use node::framework;
 
 #[cfg(test)]
 mod test;

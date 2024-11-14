@@ -1,8 +1,6 @@
 [workspace]
 
-members = [
-    "node", "pluto",
-]
+members = ["main", "node"]
 
 [workspace.dependencies]
 node = { path = "node" }
