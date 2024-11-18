@@ -84,13 +84,12 @@ where
     com_to_frontend: Arc<Mutex<Option<Channel<NodeToFront, FrontToNode>>>>,
 }
 
+/// constructors
 impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
 where
     OUTPUT: Clone + Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
 {
-    // constructors
-
     pub fn new(
         name: String,
         input: InputTree,
@@ -109,9 +108,14 @@ where
             com_to_frontend: Arc::new(Mutex::new(None)),
         }
     }
+}
 
-    // --- meta process ---
-
+/// getters and setters
+impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+where
+    OUTPUT: Clone + Send + Sync + 'static,
+    MEMORY: Send + Sync + 'static,
+{
     // getters
 
     fn get_id(&self) -> &NodeId {
@@ -127,7 +131,14 @@ where
     fn set_name(&mut self, name: String) {
         self.name = name;
     }
+}
 
+/// connect and disconnect
+impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+where
+    OUTPUT: Clone + Send + Sync + 'static,
+    MEMORY: Send + Sync + 'static,
+{
     // connect channel
 
     pub async fn connect_output(
@@ -219,6 +230,26 @@ where
         }
     }
 
+    // get input and output
+
+    // todo OUTPUT を介さずに、フロントで欲しいOutputTreeの情報を得られるような仕組みを作る
+
+    pub fn get_input_mutex(&self) -> Arc<tokio::sync::Mutex<InputTree>> {
+        self.input.clone()
+    }
+
+    pub fn get_output_mutex(&self) -> Arc<tokio::sync::Mutex<OutputTree<OUTPUT>>> {
+        self.output.clone()
+    }
+}
+
+/// others
+/// cache, coms, updating default value of input.
+impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+where
+    OUTPUT: Clone + Send + Sync + 'static,
+    MEMORY: Send + Sync + 'static,
+{
     // cache
 
     pub async fn change_cache_depth(&mut self, new_cache_size: usize) {
@@ -245,18 +276,6 @@ where
         *com_to_frontend = Some(channel);
     }
 
-    // get input and output
-
-    // todo OUTPUT を介さずに、フロントで欲しいOutputTreeの情報を得られるような仕組みを作る
-
-    pub fn get_input_mutex(&self) -> Arc<tokio::sync::Mutex<InputTree>> {
-        self.input.clone()
-    }
-
-    pub fn get_output_mutex(&self) -> Arc<tokio::sync::Mutex<OutputTree<OUTPUT>>> {
-        self.output.clone()
-    }
-
     // update default value of input
     pub async fn update_input_default(
         &mut self,
@@ -266,7 +285,7 @@ where
         let mut input = self.input.lock().await;
         match input.get_from_id(input_socket_id) {
             Ok(socket) => {
-                socket.update_default(default)?;
+                socket.update_default_value(default)?;
                 self.cache.clear();
                 self.output.lock().await.send_delete_cache().await;
                 Ok(())
@@ -274,8 +293,14 @@ where
             Err(_) => Err(UpdateInputDefaultError::SocketIdNotFound(default)),
         }
     }
+}
 
-    // --- main process ---
+/// main process
+impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+where
+    OUTPUT: Clone + Send + Sync + 'static,
+    MEMORY: Send + Sync + 'static,
+{
     /// Returns a vector of (frame, socket_id, downstream_socket_id).
     async fn search_request(&self) -> Vec<(FrameCount, SocketId, SocketId)> {
         let mut requests = Vec::new();
@@ -377,6 +402,17 @@ where
             self.for_each_request(frame, &socket_id, &downstream_socket_id)
                 .await;
         }
+    }
+
+    // todo: change process based on event driven.
+    // call by output socket.
+    pub async fn call(
+        &mut self,
+        frame: FrameCount,
+        socket_id: &SocketId,
+        downstream_socket_id: &SocketId,
+    ) -> OUTPUT {
+        todo!()
     }
 }
 
@@ -631,7 +667,7 @@ impl<T: Clone> Index<usize> for Cache<T> {
 mod tests {
     use super::super::{
         channel::{channel_pair, InputChannel, OutputChannel},
-        socket::{Input, InputCommon, Output},
+        socket::{Input, InputCommon, OutputSocket},
         types::{Envelope, SharedAny},
     };
 
@@ -696,7 +732,7 @@ mod tests {
     fn get_node(name: String, default: i64) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId) {
         let input = Box::new(Input::new(default, (), Box::new(read)));
         let input_id = *input.get_id();
-        let output = Output::new(Box::new(pickup));
+        let output = OutputSocket::new(Box::new(pickup));
         let output_id = *output.get_id();
         (
             input_id,

@@ -541,10 +541,10 @@ mod tests {
     use core::panic;
     use std::any::TypeId;
 
-    use crate::node::{
+    use crate::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
         node_core::NodeCore,
-        socket::{Input, InputCommon, InputTree, Output, OutputTree},
+        socket::{Input, InputCommon, InputTree, OutputSocket, OutputTree},
         types::{Envelope, NodeName, SharedAny},
         FrameCount,
     };
@@ -984,7 +984,7 @@ mod tests {
     mod nodes {
         use std::{sync::Arc, vec};
 
-        use crate::node::{
+        use crate::{
             node_core::NodeCoreCommon,
             types::{NodeId, SocketId},
         };
@@ -1024,7 +1024,7 @@ mod tests {
                 as Box<dyn InputCommon>;
             let input_id = input.get_id().clone();
 
-            let output = Output::new(Box::new(string_node_pickup));
+            let output = OutputSocket::new(Box::new(string_node_pickup));
             let output_id = output.get_id().clone();
             (
                 input_id,
@@ -1073,8 +1073,8 @@ mod tests {
                 Box::new(Input::new(default, (), Box::new(u64_node_read))) as Box<dyn InputCommon>;
             let input_id = input.get_id().clone();
 
-            let output1 = Output::new(Box::new(u64_node_pickup));
-            let output2 = Output::new(Box::new(u64_node_pickup));
+            let output1 = OutputSocket::new(Box::new(u64_node_pickup));
+            let output2 = OutputSocket::new(Box::new(u64_node_pickup));
             let output1_id = output1.get_id().clone();
             let output2_id = output2.get_id().clone();
             (
@@ -1160,7 +1160,7 @@ mod tests {
             )) as Box<dyn InputCommon>;
             let input_string_id = input_string.get_id().clone();
 
-            let output = Output::new(Box::new(multiple_node_pickup));
+            let output = OutputSocket::new(Box::new(multiple_node_pickup));
             let output_id = output.get_id().clone();
             (
                 input_u64_id,

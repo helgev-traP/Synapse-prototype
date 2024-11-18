@@ -1,3 +1,5 @@
+use crate::types::Envelope;
+
 use super::types::SharedAny;
 
 // --- Node connect and disconnect errors ---
@@ -41,4 +43,12 @@ pub enum UpdateInputDefaultError{
     NodeIdNotFound(SharedAny),
     SocketIdNotFound(SharedAny),
     TypeRejected(SharedAny),
+    DefaultValueNotEnabled(SharedAny),
+}
+
+#[derive(Debug)]
+pub enum UpdateInputEnvelopeError{
+    NodeIdNotFound(Envelope),
+    SocketIdNotFound(Envelope),
+    EnvelopeNotEnabled(Envelope),
 }

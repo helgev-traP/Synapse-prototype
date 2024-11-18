@@ -23,8 +23,21 @@ pub type SharedAny = Box<dyn Any + Send + Sync + 'static>;
 
 /// # Envelope
 /// Input envelope.
+#[derive(Debug)]
 pub struct Envelope {
     // todo
+}
+
+impl Envelope {
+    // todo
+
+    pub fn new() -> Self {
+        Envelope {}
+    }
+
+    pub fn value(&self) -> f64 {
+        todo!()
+    }
 }
 
 // result of try_recv_request
