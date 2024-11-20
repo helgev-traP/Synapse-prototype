@@ -1,10 +1,10 @@
 use std::{
-    collections::HashSet,
-    ops::Index,
-    sync::{Arc, Mutex},
+    collections::HashSet, ops::Index, sync::{Arc, Weak, Mutex}
 };
 
 use uuid::Uuid;
+
+use crate::socket::{InputCommon, OutputCommon};
 
 use super::{
     channel::{Channel, FrontToNode, InputChannel, NodeOrder, NodeToFront, OutputChannel},
@@ -19,10 +19,10 @@ use super::{
 /// # NodeFn
 // todo クロージャを宣言するときに無駄な引数を取る必要が無いようにしたい
 #[async_trait::async_trait]
-pub trait NodeFn<OUTPUT, MEMORY>: Send + Sync + 'static
+pub trait NodeFn<MEMORY, OUTPUT>: Send + Sync + 'static
 where
-    OUTPUT: Clone + Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
+    OUTPUT: Clone + Send + Sync + 'static,
 {
     async fn call(
         &self,
@@ -35,10 +35,10 @@ where
 }
 
 #[async_trait::async_trait]
-impl<OUTPUT, MEMORY, F> NodeFn<OUTPUT, MEMORY> for F
+impl<MEMORY, OUTPUT, F> NodeFn<MEMORY, OUTPUT> for F
 where
-    OUTPUT: Clone + Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
+    OUTPUT: Clone + Send + Sync + 'static,
     F: Fn(
             Arc<tokio::sync::Mutex<InputTree>>,
             &mut MEMORY,
@@ -62,40 +62,44 @@ where
     }
 }
 
-pub struct NodeCore<OUTPUT, MEMORY>
+pub struct NodeCore<Inputs, Memory, ProcessOutput, Outputs>
 where
-    OUTPUT: Clone + Send + Sync + 'static,
-    MEMORY: Send + Sync + 'static,
+    Inputs: InputTree + Send + 'static,
+    Memory: Send + Sync + 'static,
+    ProcessOutput: Clone + Send + Sync + 'static,
+    Outputs: OutputTree + Send + 'static,
 {
     // ids
     id: NodeId,
     name: String,
     // input
-    input: Arc<tokio::sync::Mutex<InputTree>>,
+    input: Arc<tokio::sync::Mutex<Inputs>>,
     // memory
-    memory: Arc<tokio::sync::Mutex<MEMORY>>,
+    memory: Arc<tokio::sync::Mutex<Memory>>,
     // main process
-    main_process: Box<dyn NodeFn<OUTPUT, MEMORY>>,
+    main_process: Box<dyn NodeFn<Memory, ProcessOutput>>,
     // cache
-    cache: Cache<OUTPUT>,
+    cache: Cache<ProcessOutput>,
     // output
-    output: Arc<tokio::sync::Mutex<OutputTree<OUTPUT>>>,
+    output: Arc<tokio::sync::Mutex<Outputs>>,
     // com
     com_to_frontend: Arc<Mutex<Option<Channel<NodeToFront, FrontToNode>>>>,
 }
 
 /// constructors
-impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<Inputs, Memory, ProcessOutput, Outputs>
 where
-    OUTPUT: Clone + Send + Sync + 'static,
-    MEMORY: Send + Sync + 'static,
+    Inputs: InputTree + Send + 'static,
+    Memory: Send + Sync + 'static,
+    ProcessOutput: Clone + Send + Sync + 'static,
+    Outputs: OutputTree + Send + 'static,
 {
     pub fn new(
         name: String,
-        input: InputTree,
-        memory: MEMORY,
-        main_process: Box<dyn NodeFn<OUTPUT, MEMORY>>,
-        output: OutputTree<OUTPUT>,
+        input: Inputs,
+        memory: Memory,
+        main_process: Box<dyn NodeFn<Memory, ProcessOutput>>,
+        output: Outputs,
     ) -> Self {
         NodeCore {
             id: NodeId::new(),
@@ -111,10 +115,12 @@ where
 }
 
 /// getters and setters
-impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<Inputs, Memory, ProcessOutput, Outputs>
 where
-    OUTPUT: Clone + Send + Sync + 'static,
-    MEMORY: Send + Sync + 'static,
+    Inputs: InputTree + Send + 'static,
+    Memory: Send + Sync + 'static,
+    ProcessOutput: Clone + Send + Sync + 'static,
+    Outputs: OutputTree + Send + 'static,
 {
     // getters
 
@@ -134,50 +140,53 @@ where
 }
 
 /// connect and disconnect
-impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<Inputs, Memory, ProcessOutput, Outputs>
 where
-    OUTPUT: Clone + Send + Sync + 'static,
-    MEMORY: Send + Sync + 'static,
+    Inputs: InputTree + Send + 'static,
+    Memory: Send + Sync + 'static,
+    ProcessOutput: Clone + Send + Sync + 'static,
+    Outputs: OutputTree + Send + 'static,
 {
     // connect channel
 
-    pub async fn connect_output(
+    pub async fn connect_to_output(
         &self,
-        channel: OutputChannel,
+        socket: Weak<dyn InputCommon>,
         socket_id: &SocketId,
-        downstream_socket_id: &SocketId,
     ) -> Result<(), NodeConnectError> {
-        match self.output.lock().await.get_from_id(socket_id).await {
-            Ok(socket) => {
-                socket
-                    .lock()
-                    .await
-                    .connect(channel, downstream_socket_id)
+        match self.output.lock().await.get_socket(socket_id).await {
+            Some(self_output_socket) => {
+                self_output_socket
+                    .upgrade()
+                    .unwrap()
+                    .connect(socket)
                     .await
             }
-            Err(_) => Err(NodeConnectError::SocketIdNotFound),
+            None => Err(NodeConnectError::SocketIdNotFound),
         }
     }
 
-    pub async fn send_connection_checker(
-        &self,
-        token: Uuid,
+    pub async fn connect_to_input(
+        &mut self,
+        socket: Weak<dyn OutputCommon>,
         socket_id: &SocketId,
-        downstream_socket_id: &SocketId,
-    ) -> Result<(), NodeConnectionCheckError> {
-        match self.output.lock().await.get_from_id(socket_id).await {
-            Ok(socket) => {
-                socket
-                    .lock()
-                    .await
-                    .send_connection_checker(token, downstream_socket_id)
-                    .await
+    ) -> Result<(), NodeConnectError> {
+        match self.input.lock().await.get_socket(socket_id).await {
+            Some(socket) => {
+                // connect
+                socket.upgrade().unwrap().connect(socket).await;
+
+                // clear cache
+                self.cache.clear();
+
+                // send delete cache
+                self.output.lock().await.send_delete_cache().await;
+                Ok(())
             }
-            Err(_) => Err(NodeConnectionCheckError::SocketIdNotFound),
+            None => Err(NodeConnectError::SocketIdNotFound),
         }
     }
 
-    // todo
     pub async fn disconnect_output(
         &self,
         socket_id: &SocketId,
@@ -186,22 +195,6 @@ where
         match self.output.lock().await.get_from_id(socket_id).await {
             Ok(socket) => socket.lock().await.disconnect(downstream_socket_id).await,
             Err(_) => Err(NodeDisconnectError::SocketIdNotFound),
-        }
-    }
-
-    pub async fn connect_input(
-        &mut self,
-        channel: InputChannel,
-        socket_id: &SocketId,
-    ) -> Result<(), NodeConnectError> {
-        match self.input.lock().await.get_from_id(socket_id) {
-            Ok(socket) => {
-                socket.connect(channel).await?;
-                self.cache.clear();
-                self.output.lock().await.send_delete_cache().await;
-                Ok(())
-            }
-            Err(_) => Err(NodeConnectError::SocketIdNotFound),
         }
     }
 
