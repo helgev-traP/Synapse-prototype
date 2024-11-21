@@ -19,50 +19,52 @@ use super::{
 /// # NodeFn
 // todo クロージャを宣言するときに無駄な引数を取る必要が無いようにしたい
 #[async_trait::async_trait]
-pub trait NodeFn<MEMORY, OUTPUT>: Send + Sync + 'static
+pub trait NodeFn<'a, NodeInputs, MEMORY, OUTPUT>: Send + Sync + 'static
 where
+    NodeInputs: InputTree + Send + 'static,
     MEMORY: Send + Sync + 'static,
     OUTPUT: Clone + Send + Sync + 'static,
 {
     async fn call(
-        &self,
-        input: &Arc<tokio::sync::Mutex<InputTree>>,
-        memory: &mut MEMORY,
+        &'a self,
+        name: &'a NodeName,
+        input: tokio::sync::RwLockReadGuard<'a, NodeInputs>,
+        memory: &'a mut MEMORY,
         frame: FrameCount,
-        id: &NodeId,
-        name: &NodeName,
+        downstream_id: &'a NodeId,
     ) -> OUTPUT;
 }
 
 #[async_trait::async_trait]
-impl<MEMORY, OUTPUT, F> NodeFn<MEMORY, OUTPUT> for F
+impl<'a, NodeInputs, MEMORY, OUTPUT, F> NodeFn<'a, NodeInputs, MEMORY, OUTPUT> for F
 where
+    NodeInputs: InputTree + Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
     OUTPUT: Clone + Send + Sync + 'static,
     F: Fn(
-            Arc<tokio::sync::Mutex<InputTree>>,
+            &NodeName,
+            tokio::sync::RwLockReadGuard<NodeInputs>,
             &mut MEMORY,
             FrameCount,
             &NodeId,
-            &NodeName,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = OUTPUT> + Send>>
+                    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = OUTPUT> + Send + Sync>>
         + Send
         + Sync
         + 'static,
 {
     async fn call(
-        &self,
-        input: &Arc<tokio::sync::Mutex<InputTree>>,
-        memory: &mut MEMORY,
+        &'a self,
+        name: &'a NodeName,
+        input: tokio::sync::RwLockReadGuard<'a, NodeInputs>,
+        memory: &'a mut MEMORY,
         frame: FrameCount,
-        id: &NodeId,
-        name: &NodeName,
+        downstream_id: &'a NodeId,
     ) -> OUTPUT {
-        self(input.clone(), memory, frame, id, name).await
+        self(name, input, memory, frame, downstream_id).await
     }
 }
 
-pub struct NodeCore<Inputs, Memory, ProcessOutput, Outputs>
+pub struct NodeCore<'a, Inputs, Memory, ProcessOutput, Outputs>
 where
     Inputs: InputTree + Send + 'static,
     Memory: Send + Sync + 'static,
@@ -77,7 +79,7 @@ where
     // memory
     memory: Arc<tokio::sync::Mutex<Memory>>,
     // main process
-    main_process: Box<dyn NodeFn<Memory, ProcessOutput>>,
+    main_process: Box<dyn NodeFn<'a, Inputs, Memory, ProcessOutput>>,
     // cache
     cache: Cache<ProcessOutput>,
     // output
@@ -87,7 +89,7 @@ where
 }
 
 /// constructors
-impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<Inputs, Memory, ProcessOutput, Outputs>
+impl<'a, Inputs, Memory, ProcessOutput, Outputs> NodeCore<'a, Inputs, Memory, ProcessOutput, Outputs>
 where
     Inputs: InputTree + Send + 'static,
     Memory: Send + Sync + 'static,
@@ -98,7 +100,7 @@ where
         name: String,
         input: Inputs,
         memory: Memory,
-        main_process: Box<dyn NodeFn<Memory, ProcessOutput>>,
+        main_process: Box<dyn NodeFn<'a, Inputs, Memory, ProcessOutput>>,
         output: Outputs,
     ) -> Self {
         NodeCore {
@@ -115,7 +117,7 @@ where
 }
 
 /// getters and setters
-impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<Inputs, Memory, ProcessOutput, Outputs>
+impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<'_, Inputs, Memory, ProcessOutput, Outputs>
 where
     Inputs: InputTree + Send + 'static,
     Memory: Send + Sync + 'static,
@@ -140,7 +142,7 @@ where
 }
 
 /// connect and disconnect
-impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<Inputs, Memory, ProcessOutput, Outputs>
+impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<'_, Inputs, Memory, ProcessOutput, Outputs>
 where
     Inputs: InputTree + Send + 'static,
     Memory: Send + Sync + 'static,
@@ -172,15 +174,15 @@ where
         socket_id: &SocketId,
     ) -> Result<(), NodeConnectError> {
         match self.input.lock().await.get_socket(socket_id).await {
-            Some(socket) => {
+            Some(input_socket) => {
                 // connect
-                socket.upgrade().unwrap().connect(socket).await;
+                input_socket.upgrade().unwrap().connect(socket).await;
 
                 // clear cache
                 self.cache.clear();
 
                 // send delete cache
-                self.output.lock().await.send_delete_cache().await;
+                self.output.lock().await.clear_cache().await;
                 Ok(())
             }
             None => Err(NodeConnectError::SocketIdNotFound),
@@ -192,19 +194,9 @@ where
         socket_id: &SocketId,
         downstream_socket_id: &SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        match self.output.lock().await.get_from_id(socket_id).await {
-            Ok(socket) => socket.lock().await.disconnect(downstream_socket_id).await,
-            Err(_) => Err(NodeDisconnectError::SocketIdNotFound),
-        }
-    }
-
-    pub async fn recv_connection_checker(
-        &self,
-        socket_id: &SocketId,
-    ) -> Result<Uuid, NodeConnectionCheckError> {
-        match self.input.lock().await.get_from_id(socket_id) {
-            Ok(socket) => socket.recv_connection_checker().await,
-            Err(_) => Err(NodeConnectionCheckError::SocketIdNotFound),
+        match self.output.lock().await.get_socket(socket_id).await {
+            Some(socket) => socket.upgrade().unwrap().disconnect(downstream_socket_id).await,
+            None => Err(NodeDisconnectError::SocketIdNotFound),
         }
     }
 
@@ -212,14 +204,14 @@ where
         &mut self,
         socket_id: &SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        match self.input.lock().await.get_from_id(socket_id) {
-            Ok(socket) => {
-                socket.disconnect()?;
+        match self.input.lock().await.get_socket(socket_id).await {
+            Some(socket) => {
+                socket.upgrade().unwrap().disconnect().await?;
                 self.cache.clear();
-                self.output.lock().await.send_delete_cache().await;
+                self.output.lock().await.clear_cache().await;
                 Ok(())
             }
-            Err(_) => Err(NodeDisconnectError::SocketIdNotFound),
+            None => Err(NodeDisconnectError::SocketIdNotFound),
         }
     }
 
@@ -227,21 +219,23 @@ where
 
     // todo OUTPUT を介さずに、フロントで欲しいOutputTreeの情報を得られるような仕組みを作る
 
-    pub fn get_input_mutex(&self) -> Arc<tokio::sync::Mutex<InputTree>> {
+    pub fn get_input_mutex(&self) -> Arc<tokio::sync::Mutex<Inputs>> {
         self.input.clone()
     }
 
-    pub fn get_output_mutex(&self) -> Arc<tokio::sync::Mutex<OutputTree<OUTPUT>>> {
+    pub fn get_output_mutex(&self) -> Arc<tokio::sync::Mutex<Outputs>> {
         self.output.clone()
     }
 }
 
 /// others
 /// cache, coms, updating default value of input.
-impl<OUTPUT, MEMORY> NodeCore<OUTPUT, MEMORY>
+impl<Inputs, Memory, ProcessOutput, Outputs> NodeCore<'_, Inputs, Memory, ProcessOutput, Outputs>
 where
-    OUTPUT: Clone + Send + Sync + 'static,
-    MEMORY: Send + Sync + 'static,
+    Inputs: InputTree + Send + 'static,
+    Memory: Send + Sync + 'static,
+    ProcessOutput: Clone + Send + Sync + 'static,
+    Outputs: OutputTree + Send + 'static,
 {
     // cache
 

@@ -2,7 +2,7 @@ use std::{
     any::Any,
     sync::{Arc, Weak},
 };
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 use crate::{
     err::{
@@ -55,8 +55,16 @@ where
 
 /// # Input
 
-struct InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
-where
+struct InputSocket<
+    'a,
+    Default,
+    Memory,
+    Output,
+    NodeInputs,
+    NodeMemory,
+    NodeProcessOutput,
+    NodeOutputs,
+> where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
     Output: std::any::Any + Send + Sync + 'static,
@@ -72,7 +80,7 @@ where
     name: String,
 
     // main body of node
-    node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
+    node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
 
     // from default value
     default_value_name: String,
@@ -81,7 +89,7 @@ where
     envelope: Option<RwLock<Envelope>>,
 
     memory: RwLock<Memory>,
-    reading_fn: Box<dyn for<'a> ReadingFn<'a, Default, Memory, Output>>,
+    reading_fn: Box<dyn for<'b> ReadingFn<'b, Default, Memory, Output>>,
 
     // from upstream node
     frame_select_envelope: RwLock<Envelope>,
@@ -91,8 +99,8 @@ where
 }
 
 /// build chain
-impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
-    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+impl<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+    InputSocket<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -104,13 +112,13 @@ where
 {
     pub fn new(
         name: String,
-        node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
+        node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
         default_value_name: String,
         default_value: Option<Default>,
         envelope_name: String,
         envelope: Option<Envelope>,
         memory: Memory,
-        reading_fn: Box<dyn for<'a> ReadingFn<'a, Default, Memory, Output>>,
+        reading_fn: Box<dyn for<'b> ReadingFn<'b, Default, Memory, Output>>,
         frame_select_envelope: Envelope,
     ) -> Self {
         InputSocket {
@@ -131,7 +139,7 @@ where
 
 /// get socket value
 impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
-    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+    InputSocket<'_, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -145,7 +153,7 @@ where
         match self.upstream_socket.read().await.as_ref() {
             Some(socket) => {
                 // determine frame
-                let frame = self.get_frame_select_envelope().await.value() as FrameCount;
+                let frame = self.frame_select_envelope.read().await.value() as FrameCount;
 
                 // get data from upstream
                 let data = socket
@@ -187,8 +195,17 @@ where
 /// # InputCommon
 
 #[async_trait::async_trait]
-impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs> InputCommon
-    for InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+impl<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs> InputCommon
+    for InputSocket<
+        'a,
+        Default,
+        Memory,
+        Output,
+        NodeInputs,
+        NodeMemory,
+        NodeProcessOutput,
+        NodeOutputs,
+    >
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -217,12 +234,12 @@ where
     }
 
     // get / update default value / envelope
-    async fn get_default_value(&self) -> Option<&dyn Any> {
-        Some(&*self.default_value.as_ref()?)
+    async fn get_default_value<'b>(&'b self) -> Option<RwLockReadGuard<'b, dyn Any>> {
+        todo!()
     }
 
-    async fn get_envelope(&self) -> Option<&Envelope> {
-        Some(&*self.envelope.as_ref()?.read().await)
+    async fn get_envelope<'b>(&'b self) -> Option<RwLockReadGuard<'b, Envelope>> {
+        Some(self.envelope.as_ref()?.read().await)
     }
 
     async fn set_default_value(
@@ -255,7 +272,7 @@ where
 
     // frame selection envelope
     async fn get_frame_select_envelope(&self) -> &Envelope {
-        &*self.frame_select_envelope.read().await
+        todo!()
     }
 
     async fn set_frame_select_envelope(&self, envelope: Envelope) {
@@ -295,7 +312,7 @@ where
 }
 
 #[async_trait::async_trait]
-pub(crate) trait InputCommon: Send + Sync + 'static {
+pub(crate) trait InputCommon: Send + Sync {
     // --- use from NodeField ---
     // getters
     fn get_id(&self) -> SocketId;
@@ -304,8 +321,8 @@ pub(crate) trait InputCommon: Send + Sync + 'static {
     fn get_envelope_name(&self) -> &str;
 
     // get / update default value / envelope
-    async fn get_default_value(&self) -> Option<&dyn Any>;
-    async fn get_envelope(&self) -> Option<&Envelope>;
+    async fn get_default_value<'a>(&'a self) -> Option<RwLockReadGuard<'a, dyn Any>>;
+    async fn get_envelope<'a>(&'a self) -> Option<RwLockReadGuard<'a, Envelope>>;
 
     async fn set_default_value(
         &self,

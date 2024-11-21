@@ -11,14 +11,15 @@ use crate::{
     channel::{NodeOrder, NodeResponse, OutputChannel},
     err::{NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, NodeSendResponseError},
     node_core::NodeCore,
-    types::{NodeId, SharedAny, SocketId, TryRecvResult}, FrameCount,
+    types::{NodeId, SharedAny, SocketId, TryRecvResult},
+    FrameCount,
 };
 
 use super::{InputCommon, InputTree};
 
 // inner data of Output
 
-struct OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+struct OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
 where
     SocketType: Clone + Send + Sync + 'static,
     NodeInputs: InputTree + Send + 'static,
@@ -33,14 +34,14 @@ where
     // call node's method to get data and pick up data
     pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
     // main body of node
-    node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
+    node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
 
     // downstream sockets
     downstream: HashMap<SocketId, Weak<dyn InputCommon>>,
 }
 
-impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
-    OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+impl<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+    OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
 where
     SocketType: Clone + Send + Sync + 'static,
     NodeInputs: InputTree + Send + 'static,
@@ -51,7 +52,9 @@ where
     pub fn new(
         name: String,
         pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
-        main_body_of_node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
+        main_body_of_node: Arc<
+            NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>,
+        >,
     ) -> Self {
         OutputSocket {
             id: SocketId::new(),
@@ -68,7 +71,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs> OutputCommon for OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs> OutputCommon
+    for OutputSocket<'_, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
 where
     SocketType: Clone + Send + Sync + 'static,
     NodeInputs: InputTree + Send + 'static,
@@ -102,7 +106,7 @@ where
 }
 
 #[async_trait::async_trait]
-pub(crate) trait OutputCommon: Send + Sync + 'static {
+pub(crate) trait OutputCommon: Send + Sync {
     // --- use from NodeField ---
     // getters
     fn get_id(&self) -> SocketId;
