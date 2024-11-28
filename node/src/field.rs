@@ -1,10 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, MutexGuard};
 use uuid::Uuid;
+
+use crate::socket::{InputTrait, OutputTrait};
 
 use super::{
     channel::{
@@ -34,7 +36,7 @@ pub trait NodeFieldCommon {
 pub struct NodeField {
     node_id: NodeId,
     node_name: String,
-    nodes: HashMap<NodeId, Arc<tokio::sync::Mutex<Box<dyn NodeCoreCommon>>>>,
+    nodes: HashMap<NodeId, Arc<dyn NodeCoreCommon>>,
     channel_front: tokio::sync::Mutex<FieldChannel>,
 }
 
@@ -50,11 +52,8 @@ impl NodeField {
 
     // field operations
 
-    pub fn add_node(&mut self, node: Box<dyn NodeCoreCommon>) {
-        self.nodes.insert(
-            node.get_id().clone(),
-            Arc::new(tokio::sync::Mutex::new(node)),
-        );
+    pub fn add_node(&mut self, node: Arc<dyn NodeCoreCommon>) {
+        self.nodes.insert(node.get_id().clone(), node);
     }
 
     pub fn remove_node(&mut self, node_id: &NodeId) {
@@ -70,7 +69,7 @@ impl NodeField {
 
     pub async fn check_consistency(&self) -> bool {
         for id in self.nodes.keys() {
-            if id != self.nodes.get(id).unwrap().lock().await.get_id() {
+            if id != self.nodes.get(id).unwrap().get_id() {
                 return false;
             }
         }
@@ -80,13 +79,13 @@ impl NodeField {
     pub async fn ensure_consistency(&mut self) {
         let mut ids = HashSet::new();
         for (id, node) in self.nodes.iter() {
-            if id != node.lock().await.get_id() {
+            if id != node.get_id() {
                 ids.insert(id.clone());
             }
         }
         for id in ids {
             let node = self.nodes.remove(&id).unwrap();
-            let id = node.lock().await.get_id().clone();
+            let id = node.get_id().clone();
             self.nodes.insert(id, node);
         }
     }
@@ -99,43 +98,7 @@ impl NodeField {
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeConnectError> {
-        if let Some(upstream_node) = self.nodes.get(&upstream_node_id) {
-            if let Some(downstream_node) = self.nodes.get(&downstream_node_id) {
-                // prepare channel
-                let (ch_upstream, ch_downstream): (OutputChannel, InputChannel) = channel_pair(1);
-
-                // clone for task
-                let upstream_node = upstream_node.clone();
-                let downstream_node = downstream_node.clone();
-
-                // spawn task for each node
-                let upstream_handle = tokio::spawn(async move {
-                    let upstream_node = upstream_node.lock().await;
-                    upstream_node
-                        .connect_output(
-                            ch_upstream,
-                            &upstream_node_socket_id,
-                            &downstream_node_socket_id,
-                        )
-                        .await
-                });
-                let downstream_handle = tokio::spawn(async move {
-                    let mut downstream_node = downstream_node.lock().await;
-                    downstream_node
-                        .connect_input(ch_downstream, &downstream_node_socket_id)
-                        .await
-                });
-
-                // wait
-                upstream_handle.await.unwrap()?;
-                downstream_handle.await.unwrap()?;
-                return Ok(());
-            } else {
-                return Err(NodeConnectError::NodeIdNotFound);
-            }
-        } else {
-            return Err(NodeConnectError::NodeIdNotFound);
-        }
+        todo!()
     }
 
     pub async fn node_disconnect(
@@ -143,16 +106,7 @@ impl NodeField {
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        if let Some(downstream_node) = self.nodes.get(&downstream_node_id) {
-            downstream_node
-                .lock()
-                .await
-                .disconnect_input(&downstream_node_socket_id)
-                .await?;
-            Ok(())
-        } else {
-            Err(NodeDisconnectError::NodeIdNotFound)
-        }
+        todo!()
     }
 
     pub async fn node_disconnect_safe(
@@ -162,52 +116,7 @@ impl NodeField {
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        if let Some(upstream_node) = self.nodes.get(&upstream_node_id) {
-            if let Some(downstream_node) = self.nodes.get(&downstream_node_id) {
-                // check connection
-                match Self::check_connection(
-                    upstream_node,
-                    upstream_node_socket_id,
-                    downstream_node,
-                    downstream_node_socket_id,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        // disconnect
-                        upstream_node
-                            .lock()
-                            .await
-                            .disconnect_output(&upstream_node_socket_id, &downstream_node_socket_id)
-                            .await
-                            .unwrap();
-                        downstream_node
-                            .lock()
-                            .await
-                            .disconnect_input(&downstream_node_socket_id)
-                            .await
-                            .unwrap();
-                        return Ok(());
-                    }
-                    Err(err) => match err {
-                        NodeConnectionCheckError::NodeIdNotFound => {
-                            Err(NodeDisconnectError::NodeIdNotFound)
-                        }
-                        NodeConnectionCheckError::SocketIdNotFound => {
-                            Err(NodeDisconnectError::SocketIdNotFound)
-                        }
-                        NodeConnectionCheckError::ChannelClosed
-                        | NodeConnectionCheckError::NotConnected => {
-                            Err(NodeDisconnectError::NotConnected)
-                        }
-                    },
-                }
-            } else {
-                return Err(NodeDisconnectError::NodeIdNotFound);
-            }
-        } else {
-            return Err(NodeDisconnectError::NodeIdNotFound);
-        }
+        todo!()
     }
 
     pub async fn check_connection(
@@ -216,26 +125,7 @@ impl NodeField {
         downstream_node: &Arc<tokio::sync::Mutex<Box<dyn NodeCoreCommon>>>,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeConnectionCheckError> {
-        let token = Uuid::new_v4();
-        upstream_node
-            .lock()
-            .await
-            .send_connection_checker(
-                token.clone(),
-                &upstream_node_socket_id,
-                &downstream_node_socket_id,
-            )
-            .await?;
-        let received_token = downstream_node
-            .lock()
-            .await
-            .recv_connection_checker(&downstream_node_socket_id)
-            .await?;
-        if token == received_token {
-            return Ok(());
-        } else {
-            return Err(NodeConnectionCheckError::NotConnected);
-        }
+        todo!()
     }
 
     pub async fn node_disconnect_from_input_socket(
@@ -261,12 +151,10 @@ impl NodeField {
         &self,
         node_id: &NodeId,
         input_socket_id: &SocketId,
-        default: SharedAny,
+        default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
         if let Some(node) = self.nodes.get(node_id) {
-            node.lock()
-                .await
-                .update_input_default(input_socket_id, default)
+            node.update_input_default(input_socket_id, default)
                 .await
         } else {
             Err(UpdateInputDefaultError::NodeIdNotFound(default))
@@ -275,6 +163,7 @@ impl NodeField {
 
     // main process
 
+    /*
     pub async fn main_oneshot(&self) {
         let mut handles = Vec::new();
 
@@ -293,140 +182,10 @@ impl NodeField {
             handle.await.unwrap();
         }
     }
+    */
 
     pub async fn main_loop(&self, millis: u64) {
-        // tokio 時間計測
-        let timeout = tokio::time::Duration::from_millis(millis);
-
-        // set runtime information
-        let timer = tokio::time::Instant::now();
-        let id_set = Arc::new(tokio::sync::Mutex::new(HashSet::<NodeId>::new()));
-        'main_loop: loop {
-            for (id, node) in self.nodes.iter() {
-                // check message
-                if timer.elapsed() >= timeout {
-                    // receive message from frontend
-                    'cache_message: loop {
-                        let id_set_clone = id_set.clone();
-                        match self
-                            .channel_front
-                            .lock()
-                            .await
-                            .try_recv_generic(Box::new(|message: FrontToField| async {
-                                let mut if_shutdown = false;
-                                let result = match message {
-                                    FrontToField::Shutdown => {
-                                        loop {
-                                            if id_set_clone.lock().await.is_empty() {
-                                                break;
-                                            }
-                                        }
-                                        if_shutdown = true;
-                                        FrontToFieldResult::Shutdown(Ok(()))
-                                    }
-                                    FrontToField::NodeConnect {
-                                        upstream_node_id,
-                                        upstream_node_socket_id,
-                                        downstream_node_id,
-                                        downstream_node_socket_id,
-                                    } => {
-                                        match self
-                                            .node_force_connect(
-                                                upstream_node_id,
-                                                upstream_node_socket_id,
-                                                downstream_node_id,
-                                                downstream_node_socket_id,
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => FrontToFieldResult::NodeConnect(Ok(())),
-                                            Err(err) => FrontToFieldResult::NodeConnect(Err(err)),
-                                        }
-                                    }
-                                    FrontToField::NodeDisconnect {
-                                        downstream_node_id,
-                                        downstream_node_socket_id,
-                                    } => {
-                                        match self
-                                            .node_disconnect(
-                                                downstream_node_id,
-                                                downstream_node_socket_id,
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => FrontToFieldResult::NodeDisconnect(Ok(())),
-                                            Err(err) => {
-                                                FrontToFieldResult::NodeDisconnect(Err(err))
-                                            }
-                                        }
-                                    }
-                                    FrontToField::NodeDisconnectSafe {
-                                        upstream_node_id,
-                                        upstream_node_socket_id,
-                                        downstream_node_id,
-                                        downstream_node_socket_id,
-                                    } => {
-                                        match self
-                                            .node_disconnect_safe(
-                                                upstream_node_id,
-                                                upstream_node_socket_id,
-                                                downstream_node_id,
-                                                downstream_node_socket_id,
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => FrontToFieldResult::NodeDisconnectSafe(Ok(())),
-                                            Err(err) => {
-                                                FrontToFieldResult::NodeDisconnectSafe(Err(err))
-                                            }
-                                        }
-                                    }
-                                    FrontToField::UpdateInputDefaultValue {
-                                        node_id,
-                                        socket_id,
-                                        value,
-                                    } => FrontToFieldResult::UpdateInputDefaultValue(
-                                        self.update_input_default(&node_id, &socket_id, value)
-                                            .await,
-                                    ),
-                                };
-                                (result, if_shutdown)
-                            }))
-                            .await
-                        {
-                            Ok(if_shutdown) => {
-                                if if_shutdown {
-                                    break 'main_loop;
-                                }
-                            }
-                            Err(err) => match err {
-                                mpsc::error::TryRecvError::Empty => {
-                                    break 'cache_message;
-                                }
-                                mpsc::error::TryRecvError::Disconnected => todo!(),
-                            },
-                        }
-                    }
-                }
-                // check if node is already running
-                if id_set.lock().await.contains(id) {
-                    continue;
-                }
-
-                // insert node id to id_set
-                id_set.lock().await.insert(id.clone());
-                // execute node's main
-                let node = node.clone();
-                let id_set = id_set.clone();
-
-                // task spawn
-                tokio::spawn(async move {
-                    let mut node = node.lock().await;
-                    (*node).main().await;
-                    id_set.lock().await.remove(node.get_id());
-                });
-            }
-        }
+        todo!()
     }
 }
 
@@ -436,18 +195,19 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    fn get_name(&self) -> &String {
+    async fn get_name(&self) -> MutexGuard<'_, String> {
         todo!()
     }
 
-    fn set_name(&mut self, name: String) {
-        todo!()
-    }
-    async fn change_cache_depth(&mut self, new_cache_size: usize) {
+    async fn set_name(&self, name: String) {
         todo!()
     }
 
-    fn clear_cache(&mut self) {
+    async fn change_cache_depth(&self, new_cache_size: usize) {
+        todo!()
+    }
+
+    async fn clear_cache(&self) {
         todo!()
     }
 
@@ -455,64 +215,27 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    fn cache_size(&self) -> usize {
+    async fn cache_size(&self) -> usize {
         todo!()
     }
 
-    async fn connect_output(
-        &self,
-        channel: OutputChannel,
-        socket_id: &SocketId,
-        downstream_socket_id: &SocketId,
-    ) -> Result<(), NodeConnectError> {
+    async fn get_input_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn InputTrait>> {
         todo!()
     }
 
-    async fn disconnect_output(
-        &self,
-        socket_id: &SocketId,
-        downstream_socket_id: &SocketId,
-    ) -> Result<(), NodeDisconnectError> {
-        todo!()
-    }
-
-    async fn send_connection_checker(
-        &self,
-        token: Uuid,
-        socket_id: &SocketId,
-        downstream_socket_id: &SocketId,
-    ) -> Result<(), NodeConnectionCheckError> {
-        todo!()
-    }
-
-    async fn connect_input(
-        &mut self,
-        channel: InputChannel,
-        socket_id: &SocketId,
-    ) -> Result<(), NodeConnectError> {
-        todo!()
-    }
-
-    async fn disconnect_input(&mut self, socket_id: &SocketId) -> Result<(), NodeDisconnectError> {
-        todo!()
-    }
-
-    async fn recv_connection_checker(
-        &self,
-        socket_id: &SocketId,
-    ) -> Result<Uuid, NodeConnectionCheckError> {
+    async fn get_output_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn OutputTrait>> {
         todo!()
     }
 
     async fn update_input_default(
-        &mut self,
+        &self,
         input_socket_id: &SocketId,
-        default: SharedAny,
+        default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
         todo!()
     }
 
-    async fn main(&mut self) {
+    async fn play(&self) {
         todo!()
     }
 }
@@ -544,7 +267,7 @@ mod tests {
     use crate::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
         node_core::NodeCore,
-        socket::{Input, InputTrait, InputGroup, OutputSocket, OutputGroup},
+        socket::{Input, InputGroup, InputTrait, OutputGroup, OutputSocket},
         types::{Envelope, NodeName, SharedAny},
         FrameCount,
     };
