@@ -544,7 +544,7 @@ mod tests {
     use crate::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
         node_core::NodeCore,
-        socket::{Input, InputCommon, InputTree, OutputSocket, OutputTree},
+        socket::{Input, InputTrait, InputGroup, OutputSocket, OutputGroup},
         types::{Envelope, NodeName, SharedAny},
         FrameCount,
     };
@@ -995,7 +995,7 @@ mod tests {
         }
 
         fn string_node_process(
-            input: Arc<tokio::sync::Mutex<InputTree>>,
+            input: Arc<tokio::sync::Mutex<InputGroup>>,
             _: &mut (),
             frame: FrameCount,
             _: &NodeId,
@@ -1021,7 +1021,7 @@ mod tests {
             default: String,
         ) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId) {
             let input = Box::new(Input::new(default, (), Box::new(string_node_read)))
-                as Box<dyn InputCommon>;
+                as Box<dyn InputTrait>;
             let input_id = input.get_id().clone();
 
             let output = OutputSocket::new(Box::new(string_node_pickup));
@@ -1030,10 +1030,10 @@ mod tests {
                 input_id,
                 Box::new(NodeCore::new(
                     name,
-                    InputTree::Reef(input),
+                    InputGroup::Reef(input),
                     (),
                     Box::new(string_node_process),
-                    OutputTree::new_reef(output),
+                    OutputGroup::new_reef(output),
                 )),
                 output_id,
             )
@@ -1044,7 +1044,7 @@ mod tests {
         }
 
         fn u64_node_process(
-            input: Arc<tokio::sync::Mutex<InputTree>>,
+            input: Arc<tokio::sync::Mutex<InputGroup>>,
             _: &mut (),
             frame: FrameCount,
             _: &NodeId,
@@ -1070,7 +1070,7 @@ mod tests {
             default: u64,
         ) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId, SocketId) {
             let input =
-                Box::new(Input::new(default, (), Box::new(u64_node_read))) as Box<dyn InputCommon>;
+                Box::new(Input::new(default, (), Box::new(u64_node_read))) as Box<dyn InputTrait>;
             let input_id = input.get_id().clone();
 
             let output1 = OutputSocket::new(Box::new(u64_node_pickup));
@@ -1081,12 +1081,12 @@ mod tests {
                 input_id,
                 Box::new(NodeCore::new(
                     name,
-                    InputTree::Reef(input),
+                    InputGroup::Reef(input),
                     (),
                     Box::new(u64_node_process),
-                    OutputTree::new_vec(vec![
-                        OutputTree::new_reef(output1),
-                        OutputTree::new_reef(output2),
+                    OutputGroup::new_vec(vec![
+                        OutputGroup::new_reef(output1),
+                        OutputGroup::new_reef(output2),
                     ]),
                 )),
                 output1_id,
@@ -1108,7 +1108,7 @@ mod tests {
         }
 
         fn multiple_node_process(
-            input: Arc<tokio::sync::Mutex<InputTree>>,
+            input: Arc<tokio::sync::Mutex<InputGroup>>,
             _: &mut (),
             frame: FrameCount,
             _: &NodeId,
@@ -1150,14 +1150,14 @@ mod tests {
                 default_u64,
                 (),
                 Box::new(multiple_node_read_u64),
-            )) as Box<dyn InputCommon>;
+            )) as Box<dyn InputTrait>;
             let input_u64_id = input_u64.get_id().clone();
 
             let input_string = Box::new(Input::new(
                 default_string,
                 (),
                 Box::new(multiple_node_read_string),
-            )) as Box<dyn InputCommon>;
+            )) as Box<dyn InputTrait>;
             let input_string_id = input_string.get_id().clone();
 
             let output = OutputSocket::new(Box::new(multiple_node_pickup));
@@ -1167,13 +1167,13 @@ mod tests {
                 input_string_id,
                 Box::new(NodeCore::new(
                     name,
-                    InputTree::new_vec(vec![
-                        InputTree::from(input_u64),
-                        InputTree::from(input_string),
+                    InputGroup::new_vec(vec![
+                        InputGroup::from(input_u64),
+                        InputGroup::from(input_string),
                     ]),
                     (),
                     Box::new(multiple_node_process),
-                    OutputTree::new_reef(output),
+                    OutputGroup::new_reef(output),
                 )),
                 output_id,
             )

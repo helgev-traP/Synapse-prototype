@@ -8,6 +8,7 @@ pub enum NodeConnectError {
     NodeIdNotFound,
     SocketIdNotFound,
     TypeRejected,
+    InputNotEmpty,
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,8 +29,7 @@ pub enum NodeConnectionCheckError {
 
 // --- Node send order, response errors ---
 #[derive(Debug, PartialEq)]
-pub enum NodeSendOrderError {
-}
+pub enum NodeSendOrderError {}
 
 #[derive(Debug, PartialEq)]
 pub enum NodeSendResponseError {
@@ -39,15 +39,15 @@ pub enum NodeSendResponseError {
 
 // --- Node update input default value errors ---
 #[derive(Debug)]
-pub enum UpdateInputDefaultError{
-    NodeIdNotFound(SharedAny),
-    SocketIdNotFound(SharedAny),
-    TypeRejected(SharedAny),
-    DefaultValueNotEnabled(SharedAny),
+pub enum UpdateInputDefaultError {
+    NodeIdNotFound(Box<SharedAny>),
+    SocketIdNotFound(Box<SharedAny>),
+    TypeRejected(Box<SharedAny>),
+    DefaultValueNotEnabled(Box<SharedAny>),
 }
 
 #[derive(Debug)]
-pub enum UpdateInputEnvelopeError{
+pub enum UpdateInputEnvelopeError {
     NodeIdNotFound(Envelope),
     SocketIdNotFound(Envelope),
     EnvelopeNotEnabled(Envelope),

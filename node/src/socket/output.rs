@@ -1,31 +1,25 @@
-use core::panic;
 use std::{
-    any::TypeId,
     collections::{HashMap, HashSet},
     sync::{Arc, Weak},
 };
-use tokio::sync::{mpsc, Mutex};
-use uuid::Uuid;
 
 use crate::{
-    channel::{NodeOrder, NodeResponse, OutputChannel},
-    err::{NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, NodeSendResponseError},
+    err::NodeDisconnectError,
     node_core::NodeCore,
-    types::{NodeId, SharedAny, SocketId, TryRecvResult},
+    types::{SharedAny, SocketId},
     FrameCount,
 };
 
-use super::{InputCommon, InputTree};
+use super::{InputGroup, InputTrait};
 
 // inner data of Output
 
-struct OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+struct OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputTree + Send + 'static,
+    NodeInputs: InputGroup + Send + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
-    NodeOutputs: OutputTree + Send + 'static,
 {
     // identifier
     id: SocketId,
@@ -34,51 +28,43 @@ where
     // call node's method to get data and pick up data
     pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
     // main body of node
-    node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>>,
+    node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // downstream sockets
-    downstream: HashMap<SocketId, Weak<dyn InputCommon>>,
+    downstream: tokio::sync::Mutex<HashMap<SocketId, Weak<dyn InputTrait>>>,
 }
 
-impl<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
-    OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+impl<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+    OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputTree + Send + 'static,
+    NodeInputs: InputGroup + Send + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
-    NodeOutputs: OutputTree + Send + 'static,
 {
     pub fn new(
         name: String,
         pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
-        main_body_of_node: Arc<
-            NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>,
-        >,
+        main_body_of_node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput>>,
     ) -> Self {
         OutputSocket {
             id: SocketId::new(),
             name,
             pickup,
             node: main_body_of_node,
-            downstream: HashMap::new(),
+            downstream: tokio::sync::Mutex::new(HashMap::new()),
         }
-    }
-
-    pub async fn send_delete_cache(&mut self) {
-        todo!()
     }
 }
 
 #[async_trait::async_trait]
-impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs> OutputCommon
-    for OutputSocket<'_, SocketType, NodeInputs, NodeMemory, NodeProcessOutput, NodeOutputs>
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputTrait
+    for OutputSocket<'_, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputTree + Send + 'static,
+    NodeInputs: InputGroup + Send + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
-    NodeOutputs: OutputTree + Send + 'static,
 {
     fn get_id(&self) -> SocketId {
         self.id
@@ -88,44 +74,160 @@ where
         &self.name
     }
 
-    fn get_downstream_ids(&self) -> HashSet<SocketId> {
-        self.downstream.keys().copied().collect()
+    async fn get_downstream_ids(&self) -> HashSet<SocketId> {
+        self.downstream.lock().await.keys().copied().collect()
     }
 
-    async fn connect(&self, socket: Weak<dyn InputCommon>) -> Result<(), NodeConnectError> {
-        todo!()
+    fn type_id(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<SocketType>()
     }
 
-    async fn disconnect(&self, id: &SocketId) -> Result<(), NodeDisconnectError> {
-        todo!()
+    async fn connect(&self, socket: Weak<dyn InputTrait>) {
+        let id = socket.upgrade().unwrap().get_id();
+        self.downstream.lock().await.insert(id, socket);
     }
 
-    async fn call(&self, frame: FrameCount) -> SharedAny {
-        todo!()
+    async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError> {
+        if self.downstream.lock().await.remove(&downstream_id).is_none() {
+            return Err(NodeDisconnectError::NotConnected);
+        }
+        Ok(())
+    }
+
+    async fn call(&self, frame: FrameCount, downstream_id: SocketId) -> Box<SharedAny> {
+        let output = self.node.call(frame, self.id, downstream_id).await;
+
+        Box::new((self.pickup)(&output)) as Box<SharedAny>
+    }
+
+    async fn clear_cache(&self) {
+        // let all downstream nodes clear cache
+        for (_, socket) in self.downstream.lock().await.iter() {
+            if let Some(socket) = socket.upgrade() {
+                socket.clear_cache().await;
+            }
+        }
     }
 }
 
 #[async_trait::async_trait]
-pub(crate) trait OutputCommon: Send + Sync {
+pub(crate) trait OutputTrait: Send + Sync {
     // --- use from NodeField ---
     // getters
     fn get_id(&self) -> SocketId;
     fn get_name(&self) -> &str;
 
     // get downstream ids
-    fn get_downstream_ids(&self) -> HashSet<SocketId>;
+    async fn get_downstream_ids(&self) -> HashSet<SocketId>;
 
     // connect and disconnect
-    async fn connect(&self, socket: Weak<dyn InputCommon>) -> Result<(), NodeConnectError>;
-    async fn disconnect(&self, id: &SocketId) -> Result<(), NodeDisconnectError>;
+    fn type_id(&self) -> std::any::TypeId;
+    async fn connect(&self, socket: Weak<dyn InputTrait>);
+    async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
 
     // --- use from InputSocket ---
     // called by downstream socket
-    async fn call(&self, frame: FrameCount) -> SharedAny;
+    async fn call(&self, frame: FrameCount, downstream_id: SocketId) -> Box<SharedAny>;
+
+    // called by upstream socket
+    async fn clear_cache(&self);
 }
 
-#[async_trait::async_trait]
-pub trait OutputTree: Send + 'static {
-    async fn get_socket(&self, id: &SocketId) -> Option<Weak<dyn OutputCommon>>;
-    async fn clear_cache(&self);
+pub enum OutputTree {
+    Socket(Arc<dyn OutputTrait>),
+    Vec(Vec<OutputTree>),
+}
+
+// indexing
+impl std::ops::Index<usize> for OutputTree {
+    type Output = OutputTree;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            OutputTree::Vec(v) => &v[index],
+            _ => panic!("OutputTree::Socket cannot be indexed"),
+        }
+    }
+}
+
+impl OutputTree {
+    pub fn new(s: Arc<dyn OutputTrait>) -> Self {
+        OutputTree::Socket(s)
+    }
+
+    pub fn vec(v: Vec<OutputTree>) -> Self {
+        OutputTree::Vec(v)
+    }
+
+    pub fn empty() -> Self {
+        OutputTree::Vec(Vec::new())
+    }
+
+    pub fn push(&mut self, s: OutputTree) {
+        match self {
+            OutputTree::Vec(v) => v.push(s),
+            OutputTree::Socket(_) => {
+                let mut swap = OutputTree::empty();
+                std::mem::swap(self, &mut swap);
+                self.push(swap);
+                self.push(s);
+            }
+        }
+    }
+
+    pub fn insert(&mut self, index: usize, s: OutputTree) {
+        match self {
+            OutputTree::Vec(v) => v.insert(index, s),
+            _ => panic!("OutputTree::Socket cannot be indexed"),
+        }
+    }
+
+    pub fn remove(&mut self, index: usize) -> OutputTree {
+        match self {
+            OutputTree::Vec(v) => v.remove(index),
+            _ => panic!("OutputTree::Socket cannot be indexed"),
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            OutputTree::Vec(v) => v.iter().map(|x| x.size()).sum(),
+            _ => 1,
+        }
+    }
+}
+
+impl OutputTree {
+    pub fn get_socket(&self, id: &SocketId) -> Option<Weak<dyn OutputTrait>> {
+        match self {
+            OutputTree::Socket(s) => {
+                if s.get_id() == *id {
+                    Some(Arc::downgrade(s))
+                } else {
+                    None
+                }
+            }
+            OutputTree::Vec(v) => {
+                for x in v {
+                    if let Some(s) = x.get_socket(id) {
+                        return Some(s);
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    pub async fn clear_cache(&self) {
+        match self {
+            OutputTree::Socket(s) => {
+                let _ = s.clear_cache().await;
+            }
+            OutputTree::Vec(v) => {
+                for x in v {
+                    x.clear_cache();
+                }
+            }
+        }
+    }
 }

@@ -19,7 +19,7 @@ pub trait FromToBinary {
 
 /// # Shared
 /// trait object for send data between nodes.
-pub type SharedAny = Box<dyn Any + Send + Sync + 'static>;
+pub type SharedAny = dyn Any + Send + Sync + 'static;
 
 /// # Envelope
 /// Input envelope.
