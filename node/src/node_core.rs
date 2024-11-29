@@ -190,17 +190,17 @@ where
         self.cache.lock().await.len()
     }
 
-    async fn get_input_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn InputTrait>> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
         self.input.lock().await.get_socket(socket_id).await
     }
 
-    async fn get_output_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn OutputTrait>> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
         self.output.lock().await.get_socket(socket_id)
     }
 
     async fn update_input_default(
         &self,
-        input_socket_id: &SocketId,
+        input_socket_id: SocketId,
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
         let input = self.input.lock().await;
@@ -209,7 +209,7 @@ where
                 socket.upgrade().unwrap().set_default_value(default).await?;
                 // clear cache
                 self.cache.lock().await.clear();
-                self.output.lock().await.clear_cache();
+                self.output.lock().await.clear_cache().await;
                 Ok(())
             }
             None => Err(UpdateInputDefaultError::SocketIdNotFound(default)),
@@ -224,7 +224,7 @@ where
 // --- NodeCoreCommon ---
 // handle Nodes in NodeField uniformly.
 #[async_trait::async_trait]
-pub trait NodeCoreCommon: Send + Sync {
+pub(crate) trait NodeCoreCommon: Send + Sync {
     // getters and setters
     fn get_id(&self) -> &NodeId;
     async fn get_name<'a>(&'a self) -> MutexGuard<'a, String>;
@@ -235,12 +235,12 @@ pub trait NodeCoreCommon: Send + Sync {
     async fn cache_depth(&self) -> usize;
     async fn cache_size(&self) -> usize;
     // get input/output socket to: connect, disconnect
-    async fn get_input_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn InputTrait>>;
-    async fn get_output_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn OutputTrait>>;
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>>;
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>>;
     // update default value of input
     async fn update_input_default(
         &self,
-        input_socket_id: &SocketId,
+        input_socket_id: SocketId,
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError>;
     // main playing process(play)

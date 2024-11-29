@@ -198,10 +198,10 @@ impl OutputTree {
 }
 
 impl OutputTree {
-    pub fn get_socket(&self, id: &SocketId) -> Option<Weak<dyn OutputTrait>> {
+    pub fn get_socket(&self, id: SocketId) -> Option<Weak<dyn OutputTrait>> {
         match self {
             OutputTree::Socket(s) => {
-                if s.get_id() == *id {
+                if s.get_id() == id {
                     Some(Arc::downgrade(s))
                 } else {
                     None

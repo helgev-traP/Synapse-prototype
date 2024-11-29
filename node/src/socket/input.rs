@@ -344,5 +344,5 @@ pub(crate) trait InputTrait: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait InputGroup: Send + 'static {
-    async fn get_socket(&self, id: &SocketId) -> Option<Weak<dyn InputTrait>>;
+    async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>>;
 }

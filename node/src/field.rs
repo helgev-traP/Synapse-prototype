@@ -20,7 +20,7 @@ use super::{
 };
 
 // todo いらないかも
-pub trait NodeFieldCommon {
+pub(crate) trait NodeFieldCommon {
     fn add_node(&mut self, node: Box<dyn NodeCoreCommon>);
     fn remove_node(&mut self, node_id: &NodeId);
     fn get_node(
@@ -91,14 +91,58 @@ impl NodeField {
     }
 
     // node operations
-    pub async fn node_force_connect(
+    pub async fn node_connect(
         &self,
         upstream_node_id: NodeId,
         upstream_node_socket_id: SocketId,
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeConnectError> {
-        todo!()
+        // get nodes
+        let Some(upstream_node) = self.nodes.get(&upstream_node_id) else {
+            return Err(NodeConnectError::NodeIdNotFound);
+        };
+        let Some(downstream_node) = self.nodes.get(&downstream_node_id) else {
+            return Err(NodeConnectError::NodeIdNotFound);
+        };
+
+        // get sockets
+        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+            return Err(NodeConnectError::SocketIdNotFound);
+        };
+        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+            return Err(NodeConnectError::SocketIdNotFound);
+        };
+
+        // connect
+        crate::socket::connect(upstream_socket, downstream_socket).await
+    }
+
+    pub async fn node_conservative_connect(
+        &self,
+        upstream_node_id: NodeId,
+        upstream_node_socket_id: SocketId,
+        downstream_node_id: NodeId,
+        downstream_node_socket_id: SocketId,
+    ) -> Result<(), NodeConnectError> {
+        // get nodes
+        let Some(upstream_node) = self.nodes.get(&upstream_node_id) else {
+            return Err(NodeConnectError::NodeIdNotFound);
+        };
+        let Some(downstream_node) = self.nodes.get(&downstream_node_id) else {
+            return Err(NodeConnectError::NodeIdNotFound);
+        };
+
+        // get sockets
+        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+            return Err(NodeConnectError::SocketIdNotFound);
+        };
+        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+            return Err(NodeConnectError::SocketIdNotFound);
+        };
+
+        // connect
+        crate::socket::conservative_connect(upstream_socket, downstream_socket).await
     }
 
     pub async fn node_disconnect(
@@ -106,56 +150,108 @@ impl NodeField {
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        todo!()
+        // get nodes
+        let Some(downstream_node) = self.nodes.get(&downstream_node_id) else {
+            return Err(NodeDisconnectError::NodeIdNotFound);
+        };
+
+        // get sockets
+        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+            return Err(NodeDisconnectError::SocketIdNotFound);
+        };
+
+        // disconnect
+        downstream_socket.upgrade().unwrap().disconnect().await
     }
 
-    pub async fn node_disconnect_safe(
+    pub async fn node_conservative_disconnect(
         &self,
         upstream_node_id: NodeId,
         upstream_node_socket_id: SocketId,
         downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        todo!()
+        // get nodes
+        let Some(upstream_node) = self.nodes.get(&upstream_node_id) else {
+            return Err(NodeDisconnectError::NodeIdNotFound);
+        };
+        let Some(downstream_node) = self.nodes.get(&downstream_node_id) else {
+            return Err(NodeDisconnectError::NodeIdNotFound);
+        };
+
+        // get sockets
+        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+            return Err(NodeDisconnectError::SocketIdNotFound);
+        };
+        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+            return Err(NodeDisconnectError::SocketIdNotFound);
+        };
+
+        // check connection
+        let upstream_socket = upstream_socket.upgrade().unwrap();
+        let downstream_socket = downstream_socket.upgrade().unwrap();
+
+        if upstream_socket.get_downstream_ids().await.contains(&downstream_socket.get_id()) {
+            // disconnect
+            upstream_socket.disconnect(downstream_socket.get_id()).await
+        } else {
+            Err(NodeDisconnectError::NotConnected)
+        }
     }
 
     pub async fn check_connection(
-        upstream_node: &Arc<tokio::sync::Mutex<Box<dyn NodeCoreCommon>>>,
+        &self,
+        upstream_node_id: NodeId,
         upstream_node_socket_id: SocketId,
-        downstream_node: &Arc<tokio::sync::Mutex<Box<dyn NodeCoreCommon>>>,
+        downstream_node_id: NodeId,
         downstream_node_socket_id: SocketId,
     ) -> Result<(), NodeConnectionCheckError> {
-        todo!()
+        // get nodes
+        let Some(upstream_node) = self.nodes.get(&upstream_node_id) else {
+            return Err(NodeConnectionCheckError::NodeIdNotFound);
+        };
+        let Some(downstream_node) = self.nodes.get(&downstream_node_id) else {
+            return Err(NodeConnectionCheckError::NodeIdNotFound);
+        };
+
+        // get sockets
+        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+            return Err(NodeConnectionCheckError::SocketIdNotFound);
+        };
+        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+            return Err(NodeConnectionCheckError::SocketIdNotFound);
+        };
+
+        // check connection
+        let upstream_socket = upstream_socket.upgrade().unwrap();
+        let downstream_socket = downstream_socket.upgrade().unwrap();
+
+        if upstream_socket.get_downstream_ids().await.contains(&downstream_socket.get_id()) {
+            Ok(())
+        } else {
+            Err(NodeConnectionCheckError::NotConnected)
+        }
     }
 
-    pub async fn node_disconnect_from_input_socket(
+    /*
+    pub async fn node_disconnect_all(
         &mut self,
         node_id: &NodeId,
         socket_id: &SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        // get output socket id and node id
         todo!()
     }
-
-    pub async fn node_disconnect_from_output_socket(
-        &mut self,
-        node_id: &NodeId,
-        socket_id: &SocketId,
-    ) -> Result<(), NodeDisconnectError> {
-        // get input socket id and node id
-        todo!()
-    }
+    */
 
     // update input default of node
     pub async fn update_input_default(
         &self,
-        node_id: &NodeId,
-        input_socket_id: &SocketId,
+        node_id: NodeId,
+        input_socket_id: SocketId,
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
-        if let Some(node) = self.nodes.get(node_id) {
-            node.update_input_default(input_socket_id, default)
-                .await
+        if let Some(node) = self.nodes.get(&node_id) {
+            node.update_input_default(input_socket_id, default).await
         } else {
             Err(UpdateInputDefaultError::NodeIdNotFound(default))
         }
@@ -219,17 +315,17 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    async fn get_input_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn InputTrait>> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
         todo!()
     }
 
-    async fn get_output_socket(&self, socket_id: &SocketId) -> Option<Weak<dyn OutputTrait>> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
         todo!()
     }
 
     async fn update_input_default(
         &self,
-        input_socket_id: &SocketId,
+        input_socket_id: SocketId,
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
         todo!()

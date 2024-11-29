@@ -9,7 +9,7 @@ use crate::err::NodeConnectError;
 
 /// connect two sockets
 
-pub async fn connect(
+pub(crate) async fn connect(
     upstream: Weak<dyn OutputTrait>,
     downstream: Weak<dyn InputTrait>,
 ) -> Result<(), NodeConnectError> {
@@ -30,7 +30,7 @@ pub async fn connect(
     Ok(())
 }
 
-pub async fn conservative_connect(
+pub(crate) async fn conservative_connect(
     upstream: Weak<dyn OutputTrait>,
     downstream: Weak<dyn InputTrait>,
 ) -> Result<(), NodeConnectError> {
