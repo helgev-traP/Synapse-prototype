@@ -426,10 +426,8 @@ impl<T> Cache<T> {
 mod tests {
     use crate::socket::InputSocket;
 
-    use super::super::{
-        channel::{channel_pair, InputChannel, OutputChannel},
-        types::{Envelope, SharedAny},
-    };
+    use super::super::types::SharedAny;
+    use envelope::Envelope;
 
     use super::*;
 

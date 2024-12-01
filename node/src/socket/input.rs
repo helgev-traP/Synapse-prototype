@@ -10,9 +10,11 @@ use crate::{
     },
     node_core::{NodeCore, NodeCoreCommon},
     socket::output::OutputTrait,
-    types::{Envelope, SharedAny, SocketId},
+    types::{SharedAny, SocketId},
     FrameCount,
 };
+
+use envelope::Envelope;
 
 /// # ReadFn
 // todo クロージャを宣言するときに無駄な引数を取る必要が無いようにしたい

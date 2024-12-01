@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies.uuid]
-version = "1.8.0"
+workspace = true
 features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
@@ -12,12 +12,12 @@ features = [
 ]
 
 [dependencies.tokio]
-version = "1.38.0"
+workspace = true
 features = ["full"]
 
-[dependencies]
-async-trait = "0.1"
-image = "0.25.1"
-libc = "0.2"
+[dependencies.async-trait]
+workspace = true
 
-[build-dependencies]
+# crate within the project
+[dependencies]
+envelope = { workspace = true }

@@ -23,26 +23,6 @@ pub trait FromToBinary {
 /// trait object for send data between nodes.
 pub type SharedAny = dyn Any + Send + Sync + 'static;
 
-/// # Envelope
-/// Input envelope.
-#[derive(Debug)]
-pub struct Envelope {
-    // todo
-}
-
-impl Envelope {
-    // todo
-
-    pub fn new() -> Self {
-        Envelope {}
-    }
-
-    pub fn value(&self, frame: FrameCount) -> f64 {
-        // todo
-        frame as f64
-    }
-}
-
 // result of try_recv_request
 // NodeOrder, Empty, Disconnected
 pub enum TryRecvResult {

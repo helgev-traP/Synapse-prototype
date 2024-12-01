@@ -23,7 +23,7 @@ use super::{
 };
 
 // todo いらないかも
-pub(crate) trait NodeFieldCommon {
+pub trait NodeFieldCommon {
     fn add_node(&mut self, node: Box<dyn NodeCoreCommon>);
     fn remove_node(&mut self, node_id: &NodeId);
     fn get_node(
@@ -407,16 +407,9 @@ impl FromToBinary for NodeField {
 
 #[cfg(test)]
 mod tests {
-    use core::panic;
-    use std::any::TypeId;
-
     use crate::{
-        channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
+        channel::result_channel_pair,
         framework::NodeFramework,
-        node_core::NodeCore,
-        socket::{InputGroup, InputTrait},
-        types::{Envelope, NodeName, SharedAny},
-        FrameCount,
     };
 
     use super::*;
@@ -608,6 +601,52 @@ mod tests {
                 .downcast_ref::<i64>(),
             Some(&8)
         );
+
+        // check connection
+        assert_eq!(
+            field
+                .check_connection(
+                    node_a_id,
+                    node_a_output_id[0],
+                    node_b_id,
+                    node_b_input_id[0]
+                )
+                .await,
+            Ok(())
+        );
+        assert_eq!(
+            field
+                .check_connection(
+                    node_a_id,
+                    node_a_output_id[0],
+                    node_c_id,
+                    node_c_input_id[0]
+                )
+                .await,
+            Ok(())
+        );
+        assert_eq!(
+            field
+                .check_connection(
+                    node_b_id,
+                    node_b_output_id[0],
+                    node_d_id,
+                    node_d_input_id[0]
+                )
+                .await,
+            Ok(())
+        );
+        assert_eq!(
+            field
+                .check_connection(
+                    node_c_id,
+                    node_c_output_id[0],
+                    node_d_id,
+                    node_d_input_id[1]
+                )
+                .await,
+            Ok(())
+        );
     }
 
     #[tokio::test]
@@ -708,7 +747,10 @@ mod tests {
         println!("1000 times took:      {:?}", timer.elapsed());
         println!("average:              {:?}", timer.elapsed() / 1000);
         println!("average per node:     {:?}", timer.elapsed() / 4000);
-        println!("fps per node will be: {:?}", 1.0 / (timer.elapsed().as_secs_f64() / 4000.0));
+        println!(
+            "fps per node will be: {:?}",
+            1.0 / (timer.elapsed().as_secs_f64() / 4000.0)
+        );
     }
 
     #[tokio::test]
@@ -738,9 +780,10 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
-                types::{Envelope, NodeName, SocketId},
+                types::{NodeName, SocketId},
                 FrameCount,
             };
+            use envelope::Envelope;
             use std::sync::{Arc, Weak};
 
             // Types of Node
@@ -849,7 +892,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new(),
+                        Envelope::new_pass_through(),
                     )
                 }
 
@@ -895,9 +938,10 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
-                types::{Envelope, NodeName, SocketId},
+                types::{NodeName, SocketId},
                 FrameCount,
             };
+            use envelope::Envelope;
             use std::sync::{Arc, Weak};
 
             // Types of Node
@@ -1006,7 +1050,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new(),
+                        Envelope::new_pass_through(),
                     )
                 }
 
@@ -1052,9 +1096,10 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
-                types::{Envelope, NodeName, SocketId},
+                types::{NodeName, SocketId},
                 FrameCount,
             };
+            use envelope::Envelope;
             use std::sync::{Arc, Weak};
 
             // Types of Node
@@ -1163,7 +1208,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new(),
+                        Envelope::new_pass_through(),
                     )
                 }
 
@@ -1209,9 +1254,10 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
-                types::{Envelope, NodeName, SocketId},
+                types::{NodeName, SocketId},
                 FrameCount,
             };
+            use envelope::Envelope;
             use std::sync::{Arc, Weak};
 
             // Types of Node
@@ -1330,7 +1376,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new(),
+                        Envelope::new_pass_through(),
                     )
                 }
 

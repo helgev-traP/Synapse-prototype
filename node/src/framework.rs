@@ -20,9 +20,10 @@ pub mod template {
     use crate::{
         node_core::{NodeCore, NodeCoreCommon},
         socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
-        types::{Envelope, NodeName, SocketId},
+        types::{NodeName, SocketId},
         FrameCount,
     };
+    use envelope::Envelope;
     use std::sync::{Arc, Weak};
 
     // Types of Node
@@ -132,7 +133,7 @@ pub mod template {
                 None,
                 (),
                 Box::new(read),
-                Envelope::new(),
+                Envelope::new_pass_through(),
             )
         }
 

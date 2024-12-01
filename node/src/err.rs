@@ -1,4 +1,4 @@
-use crate::types::Envelope;
+use envelope::Envelope;
 
 use super::types::SharedAny;
 
@@ -46,7 +46,6 @@ pub enum UpdateInputDefaultError {
     DefaultValueNotEnabled(Box<SharedAny>),
 }
 
-#[derive(Debug)]
 pub enum UpdateInputEnvelopeError {
     NodeIdNotFound(Envelope),
     SocketIdNotFound(Envelope),

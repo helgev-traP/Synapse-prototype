@@ -1,13 +1,11 @@
 [workspace]
 
-members = ["main", "node"]
+members = ["main", "node", "envelope"]
 
 [workspace.dependencies]
 node = { path = "node" }
+envelope = { path = "envelope" }
 
 uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 tokio = { version = "1.38.0", features = ["full"] }
 async-trait = "0.1"
-async-std = "*"
-image = "0.25.1"
-libc = "0.2"
