@@ -1,18 +1,15 @@
 use std::{
-    collections::HashSet,
     ops::Index,
     sync::{Arc, Weak},
 };
 
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::{Mutex, MutexGuard, RwLock};
 
 use crate::socket::{InputTrait, OutputTrait, OutputTree};
 
 use super::{
     channel::{Channel, FrontToNode, NodeToFront},
-    err::{
-        NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
-    },
+    err::UpdateInputDefaultError,
     socket::InputGroup,
     types::{NodeId, NodeName, SharedAny, SocketId},
     FrameCount,
@@ -21,143 +18,176 @@ use super::{
 /// # NodeFn
 // todo クロージャを宣言するときに無駄な引数を取る必要が無いようにしたい
 #[async_trait::async_trait]
-pub trait NodeFn<'a, NodeInputs, MEMORY, OUTPUT>: Send + Sync + 'static
+pub trait NodeFn<NodeInputs, MEMORY, OUTPUT>: Send + Sync + 'static
 where
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
-    OUTPUT: Clone + Send + Sync + 'static,
+    OUTPUT: Send + Sync + 'static,
 {
     async fn call(
-        &'a self,
-        name: &'a NodeName,
-        input: tokio::sync::RwLockReadGuard<'a, NodeInputs>,
-        memory: &'a mut MEMORY,
+        &self,
+        name: &NodeName,
+        input: &NodeInputs,
+        memory: &mut MEMORY,
         frame: FrameCount,
-        downstream_id: &'a NodeId,
     ) -> OUTPUT;
 }
 
 #[async_trait::async_trait]
-impl<'a, NodeInputs, MEMORY, OUTPUT, F> NodeFn<'a, NodeInputs, MEMORY, OUTPUT> for F
+impl<NodeInputs, MEMORY, OUTPUT, F> NodeFn<NodeInputs, MEMORY, OUTPUT> for F
 where
     NodeInputs: InputGroup + Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
-    OUTPUT: Clone + Send + Sync + 'static,
-    F: Fn(
-            &NodeName,
-            tokio::sync::RwLockReadGuard<NodeInputs>,
-            &mut MEMORY,
+    OUTPUT: Send + Sync + 'static,
+    // F: Fn(&NodeName, &NodeInputs, &mut MEMORY, FrameCount) -> OUTPUT + Send + Sync + 'static,
+    F: for<'a> Fn(
+            &'a NodeName,
+            &'a NodeInputs,
+            &'a mut MEMORY,
             FrameCount,
-            &NodeId,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = OUTPUT> + Send + Sync>>
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = OUTPUT> + Send + 'a>>
         + Send
         + Sync
         + 'static,
 {
     async fn call(
-        &'a self,
-        name: &'a NodeName,
-        input: tokio::sync::RwLockReadGuard<'a, NodeInputs>,
-        memory: &'a mut MEMORY,
+        &self,
+        name: &NodeName,
+        input: &NodeInputs,
+        memory: &mut MEMORY,
         frame: FrameCount,
-        downstream_id: &'a NodeId,
     ) -> OUTPUT {
-        self(name, input, memory, frame, downstream_id).await
+        self(name, input, memory, frame).await
     }
 }
 
-pub struct NodeCore<'a, Inputs, Memory, ProcessOutput>
+pub struct NodeCore<Inputs, Memory, ProcessOutput>
 where
-    Inputs: InputGroup + Send + 'static,
+    Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
-    ProcessOutput: Clone + Send + Sync + 'static,
+    ProcessOutput: Send + Sync + 'static,
 {
     // ids
     id: NodeId,
-    name: Mutex<String>,
+    name: Arc<Mutex<String>>,
     // input
-    input: Arc<tokio::sync::Mutex<Inputs>>,
+    input: Arc<Mutex<Option<Inputs>>>,
     // memory
-    memory: Arc<tokio::sync::Mutex<Memory>>,
+    memory: Arc<Mutex<Memory>>,
     // main process
-    main_process: Box<dyn NodeFn<'a, Inputs, Memory, ProcessOutput>>,
+    main_process: Box<dyn NodeFn<Inputs, Memory, ProcessOutput>>,
     // cache
     cache: Mutex<Cache<ProcessOutput>>,
     // output
-    output: Arc<tokio::sync::Mutex<OutputTree>>,
+    output: Arc<Mutex<Option<OutputTree>>>,
     // com
     com_to_frontend: Arc<Mutex<Option<Channel<NodeToFront, FrontToNode>>>>,
 }
 
 /// constructors
-impl<'a, Inputs, Memory, ProcessOutput> NodeCore<'a, Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> NodeCore<Inputs, Memory, ProcessOutput>
 where
-    Inputs: InputGroup + Send + 'static,
+    Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
-    ProcessOutput: Clone + Send + Sync + 'static,
+    ProcessOutput: Send + Sync + 'static,
 {
     pub fn new(
-        name: String,
-        input: Inputs,
+        name: &str,
         memory: Memory,
-        main_process: Box<dyn NodeFn<'a, Inputs, Memory, ProcessOutput>>,
-        output: OutputTree,
+        main_process: Box<dyn NodeFn<Inputs, Memory, ProcessOutput>>,
     ) -> Self {
         NodeCore {
             id: NodeId::new(),
-            name: Mutex::new(name),
-            input: Arc::new(tokio::sync::Mutex::new(input)),
+            name: Arc::new(Mutex::new(name.to_string())),
+            input: Arc::new(Mutex::new(None)),
             memory: Arc::new(tokio::sync::Mutex::new(memory)),
             main_process,
             cache: Mutex::new(Cache::new(1)), // キャッシュサイズはNodeFieldにpushする前に統一するので、初期値はなんでもいい
-            output: Arc::new(tokio::sync::Mutex::new(output)),
+            output: Arc::new(Mutex::new(None)),
             com_to_frontend: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub async fn set_input(&self, input: Inputs) {
+        *self.input.lock().await = Some(input);
+    }
+
+    pub async fn set_output(&self, output: OutputTree) {
+        *self.output.lock().await = Some(output);
+    }
+}
+
+/// main process
+impl<Inputs, Memory, ProcessOutput> NodeCore<Inputs, Memory, ProcessOutput>
+where
+    Inputs: InputGroup + Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    ProcessOutput: Send + Sync + 'static,
+{
+    // call by output socket.
+    pub async fn call(&self, frame: FrameCount) -> Arc<ProcessOutput> {
+        let mut cache = self.cache.lock().await;
+
+        if let Ok(data) = cache.search(frame) {
+            return data.data.clone();
+        }
+
+        let name = self.name.lock().await;
+        let input = self.input.lock().await;
+        let mut memory = self.memory.lock().await;
+
+        let output = self
+            .main_process
+            .call(
+                &*name,
+                &*input.as_ref().expect("input is not set."),
+                &mut *memory,
+                frame,
+            )
+            .await;
+
+        cache.push(frame, output);
+
+        cache.get_first().as_ref().unwrap().data.clone()
     }
 }
 
 /// others
 /// cache, coms, updating default value of input.
-impl<Inputs, Memory, ProcessOutput> NodeCore<'_, Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> NodeCore<Inputs, Memory, ProcessOutput>
 where
-    Inputs: InputGroup + Send + 'static,
+    Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
-    ProcessOutput: Clone + Send + Sync + 'static,
+    ProcessOutput: Send + Sync + 'static,
 {
     // channel to frontend
     pub async fn set_com_to_frontend(&self, channel: Channel<NodeToFront, FrontToNode>) {
         let mut com_to_frontend = self.com_to_frontend.lock().await;
         *com_to_frontend = Some(channel);
     }
-}
 
-/// main process
-impl<Inputs, Memory, ProcessOutput> NodeCore<'_, Inputs, Memory, ProcessOutput>
-where
-    Inputs: InputGroup + Send + 'static,
-    Memory: Send + Sync + 'static,
-    ProcessOutput: Clone + Send + Sync + 'static,
-{
-    // call by output socket.
-    pub async fn call(
-        &self,
-        frame: FrameCount,
-        socket_id: SocketId,
-        downstream_socket_id: SocketId,
-    ) -> &ProcessOutput {
-        todo!()
+    // only for debug build
+    #[cfg(debug_assertions)]
+    pub async fn debug_get_cache_top(&self) -> Option<Arc<ProcessOutput>> {
+        self.cache
+            .lock()
+            .await
+            .get_first()
+            .as_ref()
+            .map(|data| data.data.clone())
     }
 }
 
 #[async_trait::async_trait]
-impl<Inputs, Memory, ProcessOutput> NodeCoreCommon for NodeCore<'_, Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> NodeCoreCommon for NodeCore<Inputs, Memory, ProcessOutput>
 where
-    Inputs: InputGroup + Send + 'static,
+    Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
-    ProcessOutput: Clone + Send + Sync + 'static,
+    ProcessOutput: Send + Sync + 'static,
 {
-    fn get_id(&self) -> &NodeId {
-        &self.id
+    fn get_id(&self) -> NodeId {
+        self.id
     }
 
     async fn get_name(&self) -> MutexGuard<'_, String> {
@@ -169,7 +199,13 @@ where
     }
 
     async fn change_cache_depth(&self, new_cache_size: usize) {
-        let number_of_output = self.output.lock().await.size();
+        let number_of_output = self
+            .output
+            .lock()
+            .await
+            .as_ref()
+            .expect("input is not set.")
+            .size();
         self.cache
             .lock()
             .await
@@ -183,7 +219,14 @@ where
     }
 
     async fn cache_depth(&self) -> usize {
-        self.cache.lock().await.len() / self.output.lock().await.size()
+        self.cache.lock().await.len()
+            / self
+                .output
+                .lock()
+                .await
+                .as_ref()
+                .expect("input is not set.")
+                .size()
     }
 
     async fn cache_size(&self) -> usize {
@@ -191,11 +234,22 @@ where
     }
 
     async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
-        self.input.lock().await.get_socket(socket_id).await
+        self.input
+            .lock()
+            .await
+            .as_ref()
+            .expect("input is not set.")
+            .get_socket(socket_id)
+            .await
     }
 
     async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
-        self.output.lock().await.get_socket(socket_id)
+        self.output
+            .lock()
+            .await
+            .as_ref()
+            .expect("input is not set.")
+            .get_socket(socket_id)
     }
 
     async fn update_input_default(
@@ -204,19 +258,34 @@ where
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
         let input = self.input.lock().await;
-        match input.get_socket(input_socket_id).await {
+        match input
+            .as_ref()
+            .expect("input is not set.")
+            .get_socket(input_socket_id)
+            .await
+        {
             Some(socket) => {
                 socket.upgrade().unwrap().set_default_value(default).await?;
                 // clear cache
                 self.cache.lock().await.clear();
-                self.output.lock().await.clear_cache().await;
+                self.output
+                    .lock()
+                    .await
+                    .as_ref()
+                    .expect("input is not set.")
+                    .clear_cache()
+                    .await;
                 Ok(())
             }
             None => Err(UpdateInputDefaultError::SocketIdNotFound(default)),
         }
     }
 
-    async fn play(&self) {
+    async fn call(&self, frame: FrameCount) -> Arc<SharedAny> {
+        self.call(frame).await
+    }
+
+    async fn play(&self, frame: FrameCount) {
         todo!()
     }
 }
@@ -224,9 +293,9 @@ where
 // --- NodeCoreCommon ---
 // handle Nodes in NodeField uniformly.
 #[async_trait::async_trait]
-pub(crate) trait NodeCoreCommon: Send + Sync {
+pub trait NodeCoreCommon: Send + Sync {
     // getters and setters
-    fn get_id(&self) -> &NodeId;
+    fn get_id(&self) -> NodeId;
     async fn get_name<'a>(&'a self) -> MutexGuard<'a, String>;
     async fn set_name(&self, name: String);
     // cache
@@ -243,26 +312,45 @@ pub(crate) trait NodeCoreCommon: Send + Sync {
         input_socket_id: SocketId,
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError>;
+    // calling one frame
+    async fn call(&self, frame: FrameCount) -> Arc<SharedAny>;
     // main playing process(play)
-    async fn play(&self);
+    async fn play(&self, frame: FrameCount);
 }
 
 // --- Cache ---
 
-#[derive(Clone, Debug)]
-struct CacheData<T: Clone> {
+#[derive(Debug)]
+struct CacheData<T> {
     frame: FrameCount,
-    id: HashSet<SocketId>,
-    data: Arc<tokio::sync::Mutex<T>>,
+    data: Arc<T>,
 }
 
-struct Cache<T: Clone> {
+impl<T> Clone for CacheData<T> {
+    fn clone(&self) -> Self {
+        CacheData {
+            frame: self.frame,
+            data: self.data.clone(),
+        }
+    }
+}
+
+struct Cache<T> {
     ring_buffer: Vec<Option<CacheData<T>>>,
     buffer_size: usize,
     buffer_index: usize,
 }
 
-impl<T: Clone> Cache<T> {
+// index access
+impl<T> Index<usize> for Cache<T> {
+    type Output = Option<CacheData<T>>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        return &self.ring_buffer[(self.buffer_index + index) % self.buffer_size];
+    }
+}
+
+impl<T> Cache<T> {
     pub fn new(buffer_size: usize) -> Self {
         Cache {
             ring_buffer: vec![None; buffer_size],
@@ -275,15 +363,12 @@ impl<T: Clone> Cache<T> {
         self.buffer_size
     }
 
-    pub fn push(&mut self, frame: FrameCount, id: &SocketId, data: T) {
+    pub fn push(&mut self, frame: FrameCount, data: T) {
         // Shift the index forward to push data.
         self.buffer_index = (self.buffer_index + self.buffer_size - 1) % self.buffer_size;
-        let mut id_set = HashSet::new();
-        id_set.insert(id.clone());
         self.ring_buffer[self.buffer_index] = Some(CacheData {
             frame,
-            id: id_set,
-            data: Arc::new(tokio::sync::Mutex::new(data)),
+            data: Arc::new(data),
         });
     }
 
@@ -291,7 +376,7 @@ impl<T: Clone> Cache<T> {
         &self[0]
     }
 
-    pub fn search(&mut self, frame: FrameCount, id: &SocketId) -> Result<&CacheData<T>, ()> {
+    pub fn search(&mut self, frame: FrameCount) -> Result<&CacheData<T>, ()> {
         // Search backward from the index.
         let mut found_index: Option<usize> = None;
         for i in 0..self.buffer_size {
@@ -308,12 +393,6 @@ impl<T: Clone> Cache<T> {
                 for i in (0..index).rev() {
                     self.ring_buffer.swap(i, i + 1);
                 }
-                // insert id
-                self.ring_buffer[self.buffer_index]
-                    .as_mut()
-                    .expect("")
-                    .id
-                    .insert(id.clone());
                 Ok(self[0].as_ref().expect(""))
             }
             None => Err(()),
@@ -343,15 +422,6 @@ impl<T: Clone> Cache<T> {
     }
 }
 
-// index access
-impl<T: Clone> Index<usize> for Cache<T> {
-    type Output = Option<CacheData<T>>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        return &self.ring_buffer[(self.buffer_index + index) % self.buffer_size];
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::socket::InputSocket;
@@ -367,18 +437,16 @@ mod tests {
     fn cache_test() {
         let mut cache = Cache::<i64>::new(10);
         for i in 0..10 {
-            cache.push(i, &SocketId::new(), i);
+            cache.push(i, i);
         }
         // 始めから、 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
         // first: 9
         assert_eq!(cache.get_first().as_ref().unwrap().frame, 9);
         // search 5. then 5 become the first.
         // from begin: 5, 9, 8, 7, 6, 4, 3, 2, 1, 0
-        assert_eq!(cache.search(5, &SocketId::new()).unwrap().frame, 5);
+        assert_eq!(cache.search(5).unwrap().frame, 5);
         // first: 5
         assert_eq!(cache.get_first().as_ref().unwrap().frame, 5);
-        // frame 5 is used by another socket_id.
-        assert_eq!(cache.get_first().as_ref().expect("").id.len(), 2);
         // change size
         cache.change_size(5);
         // from begin: 5, 9, 8, 7, 6
@@ -405,9 +473,7 @@ mod tests {
         _: &NodeName,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = i64> + Send + 'a>> {
         let input = input.clone();
-        Box::pin(async move {
-            todo!()
-        })
+        Box::pin(async move { todo!() })
     }
 
     fn pickup(output: &i64) -> Box<SharedAny> {
@@ -419,6 +485,5 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn node_core_communicate_test() {
-    }
+    async fn node_core_communicate_test() {}
 }

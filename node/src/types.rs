@@ -1,3 +1,5 @@
+use crate::FrameCount;
+
 use super::channel::NodeOrder;
 use super::BYTES;
 use std::any::Any;
@@ -35,8 +37,9 @@ impl Envelope {
         Envelope {}
     }
 
-    pub fn value(&self) -> f64 {
-        todo!()
+    pub fn value(&self, frame: FrameCount) -> f64 {
+        // todo
+        frame as f64
     }
 }
 

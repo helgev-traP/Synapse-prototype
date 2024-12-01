@@ -25,8 +25,8 @@ where
     fn call(
         &'a self,
         default: Option<&'a DEFAULT>,
-        memory: &'a mut MEMORY,
         envelope: Option<&'a Envelope>,
+        memory: &'a mut MEMORY,
         frame: FrameCount,
     ) -> OUTPUT;
 }
@@ -36,29 +36,29 @@ where
     DEFAULT: Send + Sync + 'static,
     MEMORY: Send + Sync + 'static,
     OUTPUT: Send + Sync + 'static,
-    F: Fn(Option<&'a DEFAULT>, &'a mut MEMORY, Option<&'a Envelope>, FrameCount) -> OUTPUT
+    F: Fn(Option<&'a DEFAULT>, Option<&'a Envelope>, &'a mut MEMORY, FrameCount) -> OUTPUT
         + Send
         + Sync,
 {
     fn call(
         &'a self,
         default: Option<&'a DEFAULT>,
-        memory: &'a mut MEMORY,
         envelope: Option<&'a Envelope>,
+        memory: &'a mut MEMORY,
         frame: FrameCount,
     ) -> OUTPUT {
-        self(default, memory, envelope, frame)
+        self(default, envelope, memory, frame)
     }
 }
 
 /// # Input
 
-pub struct InputSocket<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+pub struct InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
     Output: Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
@@ -69,7 +69,7 @@ where
     name: String,
 
     // main body of node
-    node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput>>,
+    node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // from default value
     default_value_name: String,
@@ -88,22 +88,22 @@ where
 }
 
 /// build chain
-impl<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-    InputSocket<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
     Output: Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
     pub fn new(
-        name: String,
-        node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput>>,
-        default_value_name: String,
+        name: &str,
+        node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+        default_value_name: &str,
         default_value: Option<Default>,
-        envelope_name: String,
+        envelope_name: &str,
         envelope: Option<Envelope>,
         memory: Memory,
         reading_fn: Box<dyn for<'b> ReadingFn<'b, Default, Memory, Output>>,
@@ -111,11 +111,11 @@ where
     ) -> Self {
         InputSocket {
             id: SocketId::new(),
-            name,
+            name: name.to_string(),
             node,
-            default_value_name,
+            default_value_name: default_value_name.to_string(),
             default_value: default_value.map(|data| RwLock::new(data)),
-            envelope_name,
+            envelope_name: envelope_name.to_string(),
             envelope: envelope.map(|data| RwLock::new(data)),
             memory: RwLock::new(memory),
             reading_fn,
@@ -127,26 +127,26 @@ where
 
 /// get socket value
 impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-    InputSocket<'_, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
     Output: Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
-    pub async fn get(&mut self, frame: FrameCount) -> Output {
+    pub async fn get(&self, frame: FrameCount) -> Output {
         match self.upstream_socket.read().await.as_ref() {
             Some(socket) => {
                 // determine frame
-                let frame = self.frame_select_envelope.read().await.value() as FrameCount;
+                let frame = self.frame_select_envelope.read().await.value(frame) as FrameCount;
 
                 // get data from upstream
                 let data = socket
                     .upgrade()
                     .unwrap()
-                    .call(frame, self.id)
+                    .call(frame)
                     .await
                     .downcast()
                     .unwrap();
@@ -173,7 +173,7 @@ where
                 };
 
                 self.reading_fn
-                    .call(default, &mut *self.memory.write().await, envelope, frame)
+                    .call(default, envelope, &mut *self.memory.write().await, frame)
             }
         }
     }
@@ -182,13 +182,13 @@ where
 /// # InputCommon
 
 #[async_trait::async_trait]
-impl<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputTrait
-    for InputSocket<'a, Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputTrait
+    for InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
     Output: Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {

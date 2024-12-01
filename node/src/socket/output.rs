@@ -1,6 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Weak},
+    collections::{HashMap, HashSet}, ops::Deref, sync::{Arc, Weak}
 };
 
 use crate::{
@@ -14,10 +13,10 @@ use super::{InputGroup, InputTrait};
 
 // inner data of Output
 
-struct OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+pub struct OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
@@ -28,28 +27,28 @@ where
     // call node's method to get data and pick up data
     pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
     // main body of node
-    node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput>>,
+    node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // downstream sockets
     downstream: tokio::sync::Mutex<HashMap<SocketId, Weak<dyn InputTrait>>>,
 }
 
-impl<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
-    OutputSocket<'a, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+    OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
     pub fn new(
-        name: String,
+        name: &str,
         pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
-        main_body_of_node: Arc<NodeCore<'a, NodeInputs, NodeMemory, NodeProcessOutput>>,
+        main_body_of_node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
     ) -> Self {
         OutputSocket {
             id: SocketId::new(),
-            name,
+            name: name.to_string(),
             pickup,
             node: main_body_of_node,
             downstream: tokio::sync::Mutex::new(HashMap::new()),
@@ -59,10 +58,10 @@ where
 
 #[async_trait::async_trait]
 impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputTrait
-    for OutputSocket<'_, SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+    for OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
@@ -94,8 +93,8 @@ where
         Ok(())
     }
 
-    async fn call(&self, frame: FrameCount, downstream_id: SocketId) -> Box<SharedAny> {
-        let output = self.node.call(frame, self.id, downstream_id).await;
+    async fn call(&self, frame: FrameCount) -> Box<SharedAny> {
+        let output = self.node.call(frame).await;
 
         Box::new((self.pickup)(&output)) as Box<SharedAny>
     }
@@ -127,7 +126,7 @@ pub(crate) trait OutputTrait: Send + Sync {
 
     // --- use from InputSocket ---
     // called by downstream socket
-    async fn call(&self, frame: FrameCount, downstream_id: SocketId) -> Box<SharedAny>;
+    async fn call(&self, frame: FrameCount) -> Box<SharedAny>;
 
     // called by upstream socket
     async fn clear_cache(&self);

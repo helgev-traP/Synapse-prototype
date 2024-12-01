@@ -6,7 +6,10 @@ use std::{
 use tokio::sync::{mpsc, MutexGuard};
 use uuid::Uuid;
 
-use crate::socket::{InputTrait, OutputTrait};
+use crate::{
+    socket::{InputTrait, OutputTrait},
+    FrameCount,
+};
 
 use super::{
     channel::{
@@ -69,7 +72,7 @@ impl NodeField {
 
     pub async fn check_consistency(&self) -> bool {
         for id in self.nodes.keys() {
-            if id != self.nodes.get(id).unwrap().get_id() {
+            if *id != self.nodes.get(id).unwrap().get_id() {
                 return false;
             }
         }
@@ -79,7 +82,7 @@ impl NodeField {
     pub async fn ensure_consistency(&mut self) {
         let mut ids = HashSet::new();
         for (id, node) in self.nodes.iter() {
-            if id != node.get_id() {
+            if *id != node.get_id() {
                 ids.insert(id.clone());
             }
         }
@@ -107,10 +110,16 @@ impl NodeField {
         };
 
         // get sockets
-        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+        let Some(upstream_socket) = upstream_node
+            .get_output_socket(upstream_node_socket_id)
+            .await
+        else {
             return Err(NodeConnectError::SocketIdNotFound);
         };
-        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+        let Some(downstream_socket) = downstream_node
+            .get_input_socket(downstream_node_socket_id)
+            .await
+        else {
             return Err(NodeConnectError::SocketIdNotFound);
         };
 
@@ -134,10 +143,16 @@ impl NodeField {
         };
 
         // get sockets
-        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+        let Some(upstream_socket) = upstream_node
+            .get_output_socket(upstream_node_socket_id)
+            .await
+        else {
             return Err(NodeConnectError::SocketIdNotFound);
         };
-        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+        let Some(downstream_socket) = downstream_node
+            .get_input_socket(downstream_node_socket_id)
+            .await
+        else {
             return Err(NodeConnectError::SocketIdNotFound);
         };
 
@@ -156,7 +171,10 @@ impl NodeField {
         };
 
         // get sockets
-        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+        let Some(downstream_socket) = downstream_node
+            .get_input_socket(downstream_node_socket_id)
+            .await
+        else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
 
@@ -180,10 +198,16 @@ impl NodeField {
         };
 
         // get sockets
-        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+        let Some(upstream_socket) = upstream_node
+            .get_output_socket(upstream_node_socket_id)
+            .await
+        else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
-        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+        let Some(downstream_socket) = downstream_node
+            .get_input_socket(downstream_node_socket_id)
+            .await
+        else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
 
@@ -191,7 +215,11 @@ impl NodeField {
         let upstream_socket = upstream_socket.upgrade().unwrap();
         let downstream_socket = downstream_socket.upgrade().unwrap();
 
-        if upstream_socket.get_downstream_ids().await.contains(&downstream_socket.get_id()) {
+        if upstream_socket
+            .get_downstream_ids()
+            .await
+            .contains(&downstream_socket.get_id())
+        {
             // disconnect
             upstream_socket.disconnect(downstream_socket.get_id()).await
         } else {
@@ -215,10 +243,16 @@ impl NodeField {
         };
 
         // get sockets
-        let Some(upstream_socket) = upstream_node.get_output_socket(upstream_node_socket_id).await else {
+        let Some(upstream_socket) = upstream_node
+            .get_output_socket(upstream_node_socket_id)
+            .await
+        else {
             return Err(NodeConnectionCheckError::SocketIdNotFound);
         };
-        let Some(downstream_socket) = downstream_node.get_input_socket(downstream_node_socket_id).await else {
+        let Some(downstream_socket) = downstream_node
+            .get_input_socket(downstream_node_socket_id)
+            .await
+        else {
             return Err(NodeConnectionCheckError::SocketIdNotFound);
         };
 
@@ -226,7 +260,11 @@ impl NodeField {
         let upstream_socket = upstream_socket.upgrade().unwrap();
         let downstream_socket = downstream_socket.upgrade().unwrap();
 
-        if upstream_socket.get_downstream_ids().await.contains(&downstream_socket.get_id()) {
+        if upstream_socket
+            .get_downstream_ids()
+            .await
+            .contains(&downstream_socket.get_id())
+        {
             Ok(())
         } else {
             Err(NodeConnectionCheckError::NotConnected)
@@ -280,14 +318,22 @@ impl NodeField {
     }
     */
 
-    pub async fn main_loop(&self, millis: u64) {
+    pub async fn one_shot(&self, frame: FrameCount, node_id: NodeId) -> Option<Arc<SharedAny>> {
+        if let Some(node) = self.nodes.get(&node_id) {
+            Some(node.call(frame).await)
+        } else {
+            None
+        }
+    }
+
+    pub async fn play(&self) {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
 impl NodeCoreCommon for NodeField {
-    fn get_id(&self) -> &NodeId {
+    fn get_id(&self) -> NodeId {
         todo!()
     }
 
@@ -331,7 +377,11 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    async fn play(&self) {
+    async fn call(&self, frame: FrameCount) -> Arc<SharedAny> {
+        todo!()
+    }
+
+    async fn play(&self, frame: FrameCount) {
         todo!()
     }
 }
@@ -362,640 +412,730 @@ mod tests {
 
     use crate::{
         channel::{result_channel_pair, FrontToFieldResult, NodeOrder, NodeResponse},
+        framework::NodeFramework,
         node_core::NodeCore,
-        socket::{Input, InputGroup, InputTrait, OutputGroup, OutputSocket},
+        socket::{InputGroup, InputTrait},
         types::{Envelope, NodeName, SharedAny},
         FrameCount,
     };
 
     use super::*;
 
-    use nodes::*;
-
     #[tokio::test]
     async fn hash_map_ensure_consistency_test() {
         // todo
     }
 
-    async fn connect_and_disconnect_test_onetime(millis: u64) {
-        // field
-        let (mut field_operation, field) = result_channel_pair(1);
-        let mut field = NodeField::new("field".to_string(), field);
+    #[tokio::test]
+    async fn test() {
+        // create field
+        let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
 
-        // node i64, string
-        let (_, mut node_u64, node_u64_output, _) = get_u64_node("node_a".to_string(), 0);
-        let (node_string_input, mut node_string, node_string_output) =
-            get_string_node("node_b".to_string(), "node_b.".to_string());
+        // create nodes
+        let (node_a, node_a_input_id, node_a_output_id) = nodes::node_a::Builder::new_debug().await;
+        let node_a_id = node_a.get_id();
+        let (node_b, node_b_input_id, node_b_output_id) = nodes::node_b::Builder::new_debug().await;
+        let node_b_id = node_b.get_id();
+        let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
+        let node_c_id = node_c.get_id();
+        let (node_d, node_d_input_id, node_d_output_id) = nodes::node_d::Builder::new_debug().await;
+        let node_d_id = node_d.get_id();
 
-        // multiple node
-        let (u64_input, string_input, mut node_multiple, node_multiple_output) =
-            get_multiple_node("node_multiple".to_string(), 1, "node_multiple.".to_string());
+        // add nodes to field
+        field.add_node(node_a);
+        field.add_node(node_b);
+        field.add_node(node_c);
+        field.add_node(node_d);
 
-        // below is todo
+        // check output
+        assert_eq!(field.one_shot(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(field.one_shot(1, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(field.one_shot(2, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(field.one_shot(3, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
 
-        // channel to connect multiple node and operator.
-        let (mut ch_call, dis_ch_out) = channel_pair(1);
+        // change default value
+        field.update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64)).await.unwrap();
+        field.update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64)).await.unwrap();
+        field.update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64)).await.unwrap();
+        field.update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64)).await.unwrap();
+        field.update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64)).await.unwrap();
 
-        // ids for operation
-        let node_u64_id = node_u64.get_id().clone();
-        let node_string_id = node_string.get_id().clone();
-        let node_multiple_id = node_multiple.get_id().clone();
+        // check output
+        assert_eq!(field.one_shot(4, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(field.one_shot(5, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
+        assert_eq!(field.one_shot(6, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
+        assert_eq!(field.one_shot(7, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
 
-        // set cache depth
-        node_u64.change_cache_depth(10).await;
-        node_string.change_cache_depth(10).await;
-        node_multiple.change_cache_depth(10).await;
+        // connect nodes
+        field.node_connect(node_a_id, node_a_output_id[0], node_b_id, node_b_input_id[0]).await.unwrap();
+        field.node_connect(node_a_id, node_a_output_id[0], node_c_id, node_c_input_id[0]).await.unwrap();
+        field.node_connect(node_b_id, node_b_output_id[0], node_d_id, node_d_input_id[0]).await.unwrap();
+        field.node_connect(node_c_id, node_c_output_id[0], node_d_id, node_d_input_id[1]).await.unwrap();
 
-        // check cache depth
-        assert_eq!(node_u64.cache_depth().await, 10);
-        assert_eq!(node_string.cache_depth().await, 10);
-        assert_eq!(node_multiple.cache_depth().await, 10);
-
-        // check cache size
-        assert_eq!(node_u64.cache_size(), 20);
-        assert_eq!(node_string.cache_size(), 10);
-        assert_eq!(node_multiple.cache_size(), 10);
-
-        // node field
-        let handle_field = tokio::spawn(async move {
-            // connect display node to display operator
-            node_multiple
-                .connect_output(dis_ch_out, &node_multiple_output, &SocketId::new())
-                .await
-                .unwrap();
-
-            // add nodes
-            field.add_node(node_u64);
-            field.add_node(node_string);
-            field.add_node(node_multiple);
-
-            field.main_loop(millis).await;
-        });
-
-        // operation to field. this works as a virtual frontend and command to display node.
-        let handle_operator = tokio::spawn(async move {
-            // connect display node to display operator
-            let recv_result = ch_call.recv().await;
-            if let Some(response) = recv_result {
-                if let NodeResponse::CompatibleCheck { type_id, .. } = response {
-                    assert_eq!(type_id, TypeId::of::<String>());
-                    ch_call.send(NodeOrder::TypeConformed).await.unwrap();
-                } else {
-                    panic!();
-                }
-            } else {
-                panic!();
-            }
-
-            // 1: "node_multiple."
-            ch_call.send(NodeOrder::Request { frame: 0 }).await.unwrap();
-
-            match ch_call.recv().await.unwrap() {
-                NodeResponse::Shared(shared) => {
-                    assert_eq!(shared.downcast_ref::<String>().unwrap(), "node_multiple.");
-                }
-                _ => panic!(),
-            }
-
-            // connect node_string -> "node_a"
-            match field_operation
-                .send(FrontToField::NodeConnect {
-                    upstream_node_id: node_u64_id.clone(),
-                    upstream_node_socket_id: node_u64_output.clone(),
-                    downstream_node_id: node_multiple_id.clone(),
-                    downstream_node_socket_id: u64_input.clone(),
-                })
-                .await
-                .unwrap()
-            {
-                Some(result) => match result {
-                    FrontToFieldResult::NodeConnect(result) => {
-                        assert_eq!(result, Ok(()));
-                    }
-                    _ => panic!(),
-                },
-                None => todo!(),
-            }
-
-            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
-            } else {
-                panic!();
-            }
-
-            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
-
-            match ch_call.recv().await.unwrap() {
-                NodeResponse::Shared(shared) => {
-                    assert_eq!(
-                        shared.downcast_ref::<String>().unwrap(),
-                        "node_multiple.node_multiple."
-                    );
-                }
-                _ => panic!(),
-            }
-
-            // connect node_u64 to string input of node_multiple. (will failed because of type mismatch and nothing will be changed.)
-            match field_operation
-                .send(FrontToField::NodeConnect {
-                    upstream_node_id: node_u64_id,
-                    upstream_node_socket_id: node_u64_output,
-                    downstream_node_id: node_multiple_id,
-                    downstream_node_socket_id: string_input,
-                })
-                .await
-                .unwrap()
-            {
-                Some(result) => match result {
-                    FrontToFieldResult::NodeConnect(result) => {
-                        assert_eq!(result, Err(NodeConnectError::TypeRejected));
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-
-            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
-
-            match ch_call.recv().await.unwrap() {
-                NodeResponse::Shared(shared) => {
-                    assert_eq!(
-                        shared.downcast_ref::<String>().unwrap(),
-                        "node_multiple.node_multiple."
-                    );
-                }
-                _ => panic!(),
-            }
-
-            // connect node_string to string input of node_multiple. (will success.)
-            match field_operation
-                .send(FrontToField::NodeConnect {
-                    upstream_node_id: node_string_id.clone(),
-                    upstream_node_socket_id: node_string_output.clone(),
-                    downstream_node_id: node_multiple_id.clone(),
-                    downstream_node_socket_id: string_input.clone(),
-                })
-                .await
-                .unwrap()
-            {
-                Some(result) => match result {
-                    FrontToFieldResult::NodeConnect(result) => {
-                        assert_eq!(result, Ok(()));
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-
-            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
-            } else {
-                panic!();
-            }
-
-            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
-
-            match ch_call.recv().await.unwrap() {
-                NodeResponse::Shared(shared) => {
-                    assert_eq!(shared.downcast_ref::<String>().unwrap(), "node_b.node_b.");
-                }
-                _ => panic!(),
-            };
-
-            // dummy update
-            match field_operation
-                .send(FrontToField::UpdateInputDefaultValue {
-                    node_id: node_string_id.clone(),
-                    socket_id: node_string_input.clone(),
-                    value: Box::new("dummy.".to_string()),
-                })
-                .await
-                .unwrap()
-            {
-                Some(result) => match result {
-                    FrontToFieldResult::UpdateInputDefaultValue(result) => {
-                        if let Err(err) = result {
-                            panic!("{:?}", err);
-                        }
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-
-            // change node_b's default value to "node_b_new"
-            match field_operation
-                .send(FrontToField::UpdateInputDefaultValue {
-                    node_id: node_string_id.clone(),
-                    socket_id: node_string_input.clone(),
-                    value: Box::new("node_b_new.".to_string()),
-                })
-                .await
-                .unwrap()
-            {
-                Some(result) => match result {
-                    FrontToFieldResult::UpdateInputDefaultValue(result) => {
-                        if let Err(err) = result {
-                            panic!("{:?}", err);
-                        }
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-
-            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
-            } else {
-                panic!();
-            }
-
-            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
-            } else {
-                panic!();
-            }
-
-            ch_call.send(NodeOrder::Request { frame: 2 }).await.unwrap();
-
-            match ch_call.recv().await.unwrap() {
-                NodeResponse::Shared(shared) => {
-                    assert_eq!(
-                        shared.downcast_ref::<String>().unwrap(),
-                        "node_b_new.node_b_new."
-                    );
-                }
-                _ => panic!(),
-            };
-
-            // shutdown
-            match field_operation.send(FrontToField::Shutdown).await.unwrap() {
-                Some(result) => match result {
-                    FrontToFieldResult::Shutdown(result) => {
-                        assert_eq!(result, Ok(()));
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-        });
-
-        handle_field.await.unwrap();
-        handle_operator.await.unwrap();
+        // check output
+        assert_eq!(field.one_shot(8, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(field.one_shot(9, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
+        assert_eq!(field.one_shot(10, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
+        assert_eq!(field.one_shot(11, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&8));
     }
 
     #[tokio::test]
-    async fn force_connect_and_disconnect_test() {
-        for i in 0..10 {
-            for _ in 0..10 {
-                connect_and_disconnect_test_onetime(i).await;
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn speed_bench() {
-        // field
-        let (mut field_operation, field) = result_channel_pair(1);
-        let mut field = NodeField::new("field".to_string(), field);
-
-        // node a
-        // default is 24,883,200 bytes length string.
-        let (_, node_a, node_a_output) = get_string_node(
-            "node_a".to_string(),
-            "a_b_c_d_e_".to_string().repeat(2_488_320),
-        );
-
-        // display
-        let (node_display_input, node_display, node_display_output) =
-            get_string_node("display".to_string(), "display default".to_string());
-
-        // channel to connect display node and operator.
-        let (mut ch_call, dis_ch_out) = channel_pair(1);
-
-        // ids for operation
-        let node_a_id = node_a.get_id().clone();
-        let node_display_id = node_display.get_id().clone();
-
-        // node field
-        let handle_field = tokio::spawn(async move {
-            // connect display node to display operator
-            node_display
-                .connect_output(dis_ch_out, &node_display_output, &SocketId::new())
-                .await
-                .unwrap();
-
-            // add nodes
-            field.add_node(node_a);
-            field.add_node(node_display);
-
-            field.main_loop(10).await;
-        });
-
-        // operation to field. this works as a virtual frontend and command to display node.
-        let handle_operator = tokio::spawn(async move {
-            // connect display node to display operator
-            let recv_result = ch_call.recv().await;
-            if let Some(response) = recv_result {
-                if let NodeResponse::CompatibleCheck { type_id, .. } = response {
-                    assert_eq!(type_id, TypeId::of::<String>());
-                    ch_call.send(NodeOrder::TypeConformed).await.unwrap();
-                } else {
-                    panic!();
-                }
-            } else {
-                panic!();
-            }
-
-            // 1: "display default"
-            ch_call.send(NodeOrder::Request { frame: 0 }).await.unwrap();
-
-            match ch_call.recv().await.unwrap() {
-                NodeResponse::Shared(shared) => {
-                    assert_eq!(shared.downcast_ref::<String>().unwrap(), "display default");
-                }
-                _ => panic!(),
-            }
-
-            // a: "node_a"
-            match field_operation
-                .send(FrontToField::NodeConnect {
-                    upstream_node_id: node_a_id.clone(),
-                    upstream_node_socket_id: node_a_output.clone(),
-                    downstream_node_id: node_display_id.clone(),
-                    downstream_node_socket_id: node_display_input.clone(),
-                })
-                .await
-                .unwrap()
-            {
-                Some(result) => match result {
-                    FrontToFieldResult::NodeConnect(result) => {
-                        assert_eq!(result, Ok(()));
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-
-            if let NodeResponse::DeleteCache = ch_call.recv().await.unwrap() {
-            } else {
-                panic!();
-            }
-
-            // time measurement
-            let timer = std::time::Instant::now();
-
-            for _ in 0..1000 {
-                ch_call.send(NodeOrder::Request { frame: 1 }).await.unwrap();
-
-                match ch_call.recv().await.unwrap() {
-                    NodeResponse::Shared(shared) => {
-                        assert_eq!(
-                            shared.downcast_ref::<String>().unwrap(),
-                            &"a_b_c_d_e_".to_string().repeat(2_488_320)
-                        );
-                    }
-                    _ => panic!(),
-                }
-            }
-
-            let elapsed = timer.elapsed();
-            // print fps
-            println!(
-                "speed_bench> fps:           {} (assuming: raw 4K color image.)",
-                1000.0 / elapsed.as_secs_f64()
-            );
-
-            // time measurement (unchecked)
-            let timer = std::time::Instant::now();
-
-            for _ in 0..1000 {
-                ch_call.send(NodeOrder::Request { frame: 1 }).await.unwrap();
-
-                match ch_call.recv().await.unwrap() {
-                    NodeResponse::Shared(_) => {}
-                    _ => panic!(),
-                }
-            }
-
-            let elapsed = timer.elapsed();
-            // print fps
-            println!(
-                "speed_bench> unchecked fps: {} (assuming: raw 4K color image.)",
-                1000.0 / elapsed.as_secs_f64()
-            );
-
-            // shutdown
-            match field_operation.send(FrontToField::Shutdown).await.unwrap() {
-                Some(result) => match result {
-                    FrontToFieldResult::Shutdown(result) => {
-                        assert_eq!(result, Ok(()));
-                    }
-                    _ => panic!(),
-                },
-                None => panic!(),
-            }
-
-            // wait
-            handle_field.await.unwrap();
-        });
-
-        handle_operator.await.unwrap();
-    }
+    async fn speed_bench() {}
 
     #[cfg(test)]
     mod nodes {
-        use std::{sync::Arc, vec};
+        // Nodes:
+        // A
+        // |\
+        // | \
+        // |  \
+        // B   C
+        // |   /
+        // |  /
+        // | /
+        // D
 
-        use crate::{
-            node_core::NodeCoreCommon,
-            types::{NodeId, SocketId},
-        };
+        // A: u64 input
+        // B: u64 multiply 2
+        // C: u64 multiply 3
+        // D: u64 b^c
 
-        use super::*;
-        fn string_node_read(default: &String, _: &mut (), _: &Envelope, _: FrameCount) -> String {
-            default.clone()
+        pub mod node_a {
+            use crate::{
+                field::OutputTrait,
+                framework::NodeFramework,
+                node_core::{NodeCore, NodeCoreCommon},
+                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                types::{Envelope, NodeName, SocketId},
+                FrameCount,
+            };
+            use std::sync::{Arc, Weak};
+
+            // Types of Node
+
+            type NodeMemory = ();
+            type NodeOutput = i64;
+
+            // Node
+
+            pub struct Builder;
+
+            #[async_trait::async_trait]
+            impl NodeFramework for Builder {
+                async fn new() -> Arc<dyn NodeCoreCommon> {
+                    let node = Arc::new(NodeCore::new("A", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let output = give_output_tree(node.clone());
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    node
+                }
+
+                async fn new_debug() -> (
+                    Arc<dyn NodeCoreCommon>,
+                    Vec<crate::types::SocketId>,
+                    Vec<crate::types::SocketId>,
+                ) {
+                    let node = Arc::new(NodeCore::new("A", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let input_id = input.input_1.get_id();
+                    let output = output_1::build(node.clone());
+                    let output_id = output.get_id();
+                    let output = OutputTree::Socket(Arc::new(output));
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    (node, vec![input_id], vec![output_id])
+                }
+
+                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                    todo!()
+                }
+            }
+
+            fn node_main_process<'a>(
+                _: &'a NodeName,
+                input: &'a Inputs,
+                _: &'a mut (),
+                frame: FrameCount,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>>
+            {
+                Box::pin(async move { input.input_1.get(frame).await })
+            }
+
+            // Input
+
+            struct Inputs {
+                input_1: Arc<input_1::Socket>,
+            }
+
+            #[async_trait::async_trait]
+            impl InputGroup for Inputs {
+                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                    if id == self.input_1.get_id() {
+                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            impl Inputs {
+                fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                    let input_1 = input_1::build(node.clone());
+                    Self {
+                        input_1: Arc::new(input_1),
+                    }
+                }
+            }
+
+            // Input Sockets
+
+            mod input_1 {
+                use super::*;
+
+                // types
+                type Default = i64;
+                type Memory = ();
+                type SocketType = i64;
+                pub type Socket =
+                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    InputSocket::new(
+                        "input",
+                        node,
+                        "i64",
+                        Some(0),
+                        "",
+                        None,
+                        (),
+                        Box::new(read),
+                        Envelope::new(),
+                    )
+                }
+
+                // read from default value or envelope
+                fn read(
+                    default: Option<&Default>,
+                    _: Option<&Envelope>,
+                    _: &mut (),
+                    _: FrameCount,
+                ) -> SocketType {
+                    *default.unwrap()
+                }
+            }
+
+            // Output
+
+            fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
+                OutputTree::Socket(Arc::new(output_1::build(node)))
+            }
+
+            mod output_1 {
+                use super::*;
+
+                // types
+                type SocketType = i64;
+                pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    OutputSocket::new("output", Box::new(pickup), node)
+                }
+
+                // pick up from the output of node main process
+                fn pickup(s: &NodeOutput) -> SocketType {
+                    s.clone()
+                }
+            }
         }
 
-        fn string_node_process(
-            input: Arc<tokio::sync::Mutex<InputGroup>>,
-            _: &mut (),
-            frame: FrameCount,
-            _: &NodeId,
-            _: &NodeName,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
-            let input = input.clone();
-            Box::pin(async move {
-                tokio::spawn(async move { input.lock().await.reef().get_clone(frame).await })
-                    .await
-                    .unwrap()
-                    .downcast_ref::<String>()
-                    .unwrap()
-                    .clone()
-            })
+        pub mod node_b {
+            use crate::{
+                field::OutputTrait,
+                framework::NodeFramework,
+                node_core::{NodeCore, NodeCoreCommon},
+                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                types::{Envelope, NodeName, SocketId},
+                FrameCount,
+            };
+            use std::sync::{Arc, Weak};
+
+            // Types of Node
+
+            type NodeMemory = ();
+            type NodeOutput = i64;
+
+            // Node
+
+            pub struct Builder;
+
+            #[async_trait::async_trait]
+            impl NodeFramework for Builder {
+                async fn new() -> Arc<dyn NodeCoreCommon> {
+                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let output = give_output_tree(node.clone());
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    node
+                }
+
+                async fn new_debug() -> (
+                    Arc<dyn NodeCoreCommon>,
+                    Vec<crate::types::SocketId>,
+                    Vec<crate::types::SocketId>,
+                ) {
+                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let input_id = input.input_1.get_id();
+                    let output = output_1::build(node.clone());
+                    let output_id = output.get_id();
+                    let output = OutputTree::Socket(Arc::new(output));
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    (node, vec![input_id], vec![output_id])
+                }
+
+                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                    todo!()
+                }
+            }
+
+            fn node_main_process<'a>(
+                _: &'a NodeName,
+                input: &'a Inputs,
+                _: &'a mut (),
+                frame: FrameCount,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>>
+            {
+                Box::pin(async move { input.input_1.get(frame).await * 2 })
+            }
+
+            // Input
+
+            struct Inputs {
+                input_1: Arc<input_1::Socket>,
+            }
+
+            #[async_trait::async_trait]
+            impl InputGroup for Inputs {
+                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                    if id == self.input_1.get_id() {
+                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            impl Inputs {
+                fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                    let input_1 = input_1::build(node.clone());
+                    Self {
+                        input_1: Arc::new(input_1),
+                    }
+                }
+            }
+
+            // Input Sockets
+
+            mod input_1 {
+                use super::*;
+
+                // types
+                type Default = i64;
+                type Memory = ();
+                type SocketType = i64;
+                pub type Socket =
+                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    InputSocket::new(
+                        "input",
+                        node,
+                        "i64",
+                        Some(0),
+                        "",
+                        None,
+                        (),
+                        Box::new(read),
+                        Envelope::new(),
+                    )
+                }
+
+                // read from default value or envelope
+                fn read(
+                    default: Option<&Default>,
+                    _: Option<&Envelope>,
+                    _: &mut (),
+                    _: FrameCount,
+                ) -> SocketType {
+                    *default.unwrap()
+                }
+            }
+
+            // Output
+
+            fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
+                OutputTree::Socket(Arc::new(output_1::build(node)))
+            }
+
+            mod output_1 {
+                use super::*;
+
+                // types
+                type SocketType = i64;
+                pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    OutputSocket::new("output", Box::new(pickup), node)
+                }
+
+                // pick up from the output of node main process
+                fn pickup(s: &NodeOutput) -> SocketType {
+                    s.clone()
+                }
+            }
         }
 
-        fn string_node_pickup(output: &String) -> SharedAny {
-            Box::new(output.clone())
+        pub mod node_c {
+            use crate::{
+                field::OutputTrait,
+                framework::NodeFramework,
+                node_core::{NodeCore, NodeCoreCommon},
+                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                types::{Envelope, NodeName, SocketId},
+                FrameCount,
+            };
+            use std::sync::{Arc, Weak};
+
+            // Types of Node
+
+            type NodeMemory = ();
+            type NodeOutput = i64;
+
+            // Node
+
+            pub struct Builder;
+
+            #[async_trait::async_trait]
+            impl NodeFramework for Builder {
+                async fn new() -> Arc<dyn NodeCoreCommon> {
+                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let output = give_output_tree(node.clone());
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    node
+                }
+
+                async fn new_debug() -> (
+                    Arc<dyn NodeCoreCommon>,
+                    Vec<crate::types::SocketId>,
+                    Vec<crate::types::SocketId>,
+                ) {
+                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let input_id = input.input_1.get_id();
+                    let output = output_1::build(node.clone());
+                    let output_id = output.get_id();
+                    let output = OutputTree::Socket(Arc::new(output));
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    (node, vec![input_id], vec![output_id])
+                }
+
+                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                    todo!()
+                }
+            }
+
+            fn node_main_process<'a>(
+                _: &'a NodeName,
+                input: &'a Inputs,
+                _: &'a mut (),
+                frame: FrameCount,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>>
+            {
+                Box::pin(async move { input.input_1.get(frame).await * 3 })
+            }
+
+            // Input
+
+            struct Inputs {
+                input_1: Arc<input_1::Socket>,
+            }
+
+            #[async_trait::async_trait]
+            impl InputGroup for Inputs {
+                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                    if id == self.input_1.get_id() {
+                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            impl Inputs {
+                fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                    let input_1 = input_1::build(node.clone());
+                    Self {
+                        input_1: Arc::new(input_1),
+                    }
+                }
+            }
+
+            // Input Sockets
+
+            mod input_1 {
+                use super::*;
+
+                // types
+                type Default = i64;
+                type Memory = ();
+                type SocketType = i64;
+                pub type Socket =
+                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    InputSocket::new(
+                        "input",
+                        node,
+                        "i64",
+                        Some(0),
+                        "",
+                        None,
+                        (),
+                        Box::new(read),
+                        Envelope::new(),
+                    )
+                }
+
+                // read from default value or envelope
+                fn read(
+                    default: Option<&Default>,
+                    _: Option<&Envelope>,
+                    _: &mut (),
+                    _: FrameCount,
+                ) -> SocketType {
+                    *default.unwrap()
+                }
+            }
+
+            // Output
+
+            fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
+                OutputTree::Socket(Arc::new(output_1::build(node)))
+            }
+
+            mod output_1 {
+                use super::*;
+
+                // types
+                type SocketType = i64;
+                pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    OutputSocket::new("output", Box::new(pickup), node)
+                }
+
+                // pick up from the output of node main process
+                fn pickup(s: &NodeOutput) -> SocketType {
+                    s.clone()
+                }
+            }
         }
 
-        pub fn get_string_node(
-            name: String,
-            default: String,
-        ) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId) {
-            let input = Box::new(Input::new(default, (), Box::new(string_node_read)))
-                as Box<dyn InputTrait>;
-            let input_id = input.get_id().clone();
+        pub mod node_d {
+            use crate::{
+                field::OutputTrait,
+                framework::NodeFramework,
+                node_core::{NodeCore, NodeCoreCommon},
+                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                types::{Envelope, NodeName, SocketId},
+                FrameCount,
+            };
+            use std::sync::{Arc, Weak};
 
-            let output = OutputSocket::new(Box::new(string_node_pickup));
-            let output_id = output.get_id().clone();
-            (
-                input_id,
-                Box::new(NodeCore::new(
-                    name,
-                    InputGroup::Reef(input),
-                    (),
-                    Box::new(string_node_process),
-                    OutputGroup::new_reef(output),
-                )),
-                output_id,
-            )
-        }
+            // Types of Node
 
-        fn u64_node_read(_: &u64, _: &mut (), _: &Envelope, frame: FrameCount) -> u64 {
-            frame as u64
-        }
+            type NodeMemory = ();
+            type NodeOutput = i64;
 
-        fn u64_node_process(
-            input: Arc<tokio::sync::Mutex<InputGroup>>,
-            _: &mut (),
-            frame: FrameCount,
-            _: &NodeId,
-            _: &NodeName,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = u64> + Send>> {
-            let input = input.clone();
-            Box::pin(async move {
-                tokio::spawn(async move { input.lock().await.reef().get_clone(frame).await })
-                    .await
-                    .unwrap()
-                    .downcast_ref::<u64>()
-                    .unwrap()
-                    .clone()
-            })
-        }
+            // Node
 
-        fn u64_node_pickup(output: &u64) -> SharedAny {
-            Box::new(output.clone())
-        }
+            pub struct Builder;
 
-        pub fn get_u64_node(
-            name: String,
-            default: u64,
-        ) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId, SocketId) {
-            let input =
-                Box::new(Input::new(default, (), Box::new(u64_node_read))) as Box<dyn InputTrait>;
-            let input_id = input.get_id().clone();
+            #[async_trait::async_trait]
+            impl NodeFramework for Builder {
+                async fn new() -> Arc<dyn NodeCoreCommon> {
+                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
 
-            let output1 = OutputSocket::new(Box::new(u64_node_pickup));
-            let output2 = OutputSocket::new(Box::new(u64_node_pickup));
-            let output1_id = output1.get_id().clone();
-            let output2_id = output2.get_id().clone();
-            (
-                input_id,
-                Box::new(NodeCore::new(
-                    name,
-                    InputGroup::Reef(input),
-                    (),
-                    Box::new(u64_node_process),
-                    OutputGroup::new_vec(vec![
-                        OutputGroup::new_reef(output1),
-                        OutputGroup::new_reef(output2),
-                    ]),
-                )),
-                output1_id,
-                output2_id,
-            )
-        }
+                    let input = Inputs::new(node.clone());
+                    let output = give_output_tree(node.clone());
 
-        fn multiple_node_read_u64(default: &u64, _: &mut (), _: &Envelope, _: FrameCount) -> u64 {
-            *default
-        }
+                    node.set_input(input).await;
+                    node.set_output(output).await;
 
-        fn multiple_node_read_string(
-            default: &String,
-            _: &mut (),
-            _: &Envelope,
-            _: FrameCount,
-        ) -> String {
-            default.clone()
-        }
+                    node
+                }
 
-        fn multiple_node_process(
-            input: Arc<tokio::sync::Mutex<InputGroup>>,
-            _: &mut (),
-            frame: FrameCount,
-            _: &NodeId,
-            _: &NodeName,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
-            Box::pin(async move {
-                let input_clone = input.clone();
-                let i = tokio::spawn(async move {
-                    input_clone.lock().await[0].reef().get_clone(frame).await
+                async fn new_debug() -> (
+                    Arc<dyn NodeCoreCommon>,
+                    Vec<crate::types::SocketId>,
+                    Vec<crate::types::SocketId>,
+                ) {
+                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+
+                    let input = Inputs::new(node.clone());
+                    let input_id_1 = input.input_1.get_id();
+                    let input_id_2 = input.input_2.get_id();
+                    let output = output_1::build(node.clone());
+                    let output_id = output.get_id();
+                    let output = OutputTree::Socket(Arc::new(output));
+
+                    node.set_input(input).await;
+                    node.set_output(output).await;
+
+                    (node, vec![input_id_1, input_id_2], vec![output_id])
+                }
+
+                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                    todo!()
+                }
+            }
+
+            fn node_main_process<'a>(
+                _: &'a NodeName,
+                input: &'a Inputs,
+                _: &'a mut (),
+                frame: FrameCount,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>>
+            {
+                Box::pin(async move {
+                    let b = input.input_1.get(frame).await;
+                    let c = input.input_2.get(frame).await;
+                    b.pow(c as u32)
                 })
-                .await
-                .unwrap()
-                .downcast_ref::<u64>()
-                .unwrap()
-                .clone();
-                let input_clone = input.clone();
-                let s = tokio::spawn(async move {
-                    input_clone.lock().await[1].reef().get_clone(frame).await
-                })
-                .await
-                .unwrap()
-                .downcast_ref::<String>()
-                .unwrap()
-                .clone();
-                s.repeat(i as usize)
-            })
-        }
+            }
 
-        fn multiple_node_pickup(output: &String) -> SharedAny {
-            Box::new(output.clone())
-        }
+            // Input
 
-        pub fn get_multiple_node(
-            name: String,
-            default_u64: u64,
-            default_string: String,
-        ) -> (SocketId, SocketId, Box<dyn NodeCoreCommon>, SocketId) {
-            let input_u64 = Box::new(Input::new(
-                default_u64,
-                (),
-                Box::new(multiple_node_read_u64),
-            )) as Box<dyn InputTrait>;
-            let input_u64_id = input_u64.get_id().clone();
+            struct Inputs {
+                input_1: Arc<input_1::Socket>,
+                input_2: Arc<input_1::Socket>,
+            }
 
-            let input_string = Box::new(Input::new(
-                default_string,
-                (),
-                Box::new(multiple_node_read_string),
-            )) as Box<dyn InputTrait>;
-            let input_string_id = input_string.get_id().clone();
+            #[async_trait::async_trait]
+            impl InputGroup for Inputs {
+                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                    if id == self.input_1.get_id() {
+                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                    } else if id == self.input_2.get_id() {
+                        Some(Arc::downgrade(&self.input_2) as Weak<dyn InputTrait>)
+                    } else {
+                        None
+                    }
+                }
+            }
 
-            let output = OutputSocket::new(Box::new(multiple_node_pickup));
-            let output_id = output.get_id().clone();
-            (
-                input_u64_id,
-                input_string_id,
-                Box::new(NodeCore::new(
-                    name,
-                    InputGroup::new_vec(vec![
-                        InputGroup::from(input_u64),
-                        InputGroup::from(input_string),
-                    ]),
-                    (),
-                    Box::new(multiple_node_process),
-                    OutputGroup::new_reef(output),
-                )),
-                output_id,
-            )
+            impl Inputs {
+                fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                    let input_1 = input_1::build(node.clone());
+                    let input_2 = input_1::build(node.clone());
+                    Self {
+                        input_1: Arc::new(input_1),
+                        input_2: Arc::new(input_2),
+                    }
+                }
+            }
+
+            // Input Sockets
+
+            mod input_1 {
+                use super::*;
+
+                // types
+                type Default = i64;
+                type Memory = ();
+                type SocketType = i64;
+                pub type Socket =
+                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    InputSocket::new(
+                        "input",
+                        node,
+                        "i64",
+                        Some(0),
+                        "",
+                        None,
+                        (),
+                        Box::new(read),
+                        Envelope::new(),
+                    )
+                }
+
+                // read from default value or envelope
+                fn read(
+                    default: Option<&Default>,
+                    _: Option<&Envelope>,
+                    _: &mut (),
+                    _: FrameCount,
+                ) -> SocketType {
+                    *default.unwrap()
+                }
+            }
+
+            // Output
+
+            fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
+                OutputTree::Socket(Arc::new(output_1::build(node)))
+            }
+
+            mod output_1 {
+                use super::*;
+
+                // types
+                type SocketType = i64;
+                pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
+
+                // build socket
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                    OutputSocket::new("output", Box::new(pickup), node)
+                }
+
+                // pick up from the output of node main process
+                fn pickup(s: &NodeOutput) -> SocketType {
+                    s.clone()
+                }
+            }
         }
     }
 }
