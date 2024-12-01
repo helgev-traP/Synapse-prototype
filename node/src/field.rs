@@ -448,39 +448,271 @@ mod tests {
         field.add_node(node_d);
 
         // check output
-        assert_eq!(field.one_shot(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
-        assert_eq!(field.one_shot(1, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
-        assert_eq!(field.one_shot(2, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
-        assert_eq!(field.one_shot(3, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(
+            field
+                .one_shot(0, node_a_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&0)
+        );
+        assert_eq!(
+            field
+                .one_shot(1, node_b_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&0)
+        );
+        assert_eq!(
+            field
+                .one_shot(2, node_c_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&0)
+        );
+        assert_eq!(
+            field
+                .one_shot(3, node_d_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&1)
+        );
 
         // change default value
-        field.update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64)).await.unwrap();
-        field.update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64)).await.unwrap();
-        field.update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64)).await.unwrap();
-        field.update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64)).await.unwrap();
-        field.update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64)).await.unwrap();
+        field
+            .update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .await
+            .unwrap();
 
         // check output
-        assert_eq!(field.one_shot(4, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
-        assert_eq!(field.one_shot(5, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
-        assert_eq!(field.one_shot(6, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
-        assert_eq!(field.one_shot(7, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(
+            field
+                .one_shot(4, node_a_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&1)
+        );
+        assert_eq!(
+            field
+                .one_shot(5, node_b_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&2)
+        );
+        assert_eq!(
+            field
+                .one_shot(6, node_c_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&3)
+        );
+        assert_eq!(
+            field
+                .one_shot(7, node_d_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&1)
+        );
 
         // connect nodes
-        field.node_connect(node_a_id, node_a_output_id[0], node_b_id, node_b_input_id[0]).await.unwrap();
-        field.node_connect(node_a_id, node_a_output_id[0], node_c_id, node_c_input_id[0]).await.unwrap();
-        field.node_connect(node_b_id, node_b_output_id[0], node_d_id, node_d_input_id[0]).await.unwrap();
-        field.node_connect(node_c_id, node_c_output_id[0], node_d_id, node_d_input_id[1]).await.unwrap();
+        field
+            .node_connect(
+                node_a_id,
+                node_a_output_id[0],
+                node_b_id,
+                node_b_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_a_id,
+                node_a_output_id[0],
+                node_c_id,
+                node_c_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_b_id,
+                node_b_output_id[0],
+                node_d_id,
+                node_d_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_c_id,
+                node_c_output_id[0],
+                node_d_id,
+                node_d_input_id[1],
+            )
+            .await
+            .unwrap();
 
         // check output
-        assert_eq!(field.one_shot(8, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
-        assert_eq!(field.one_shot(9, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
-        assert_eq!(field.one_shot(10, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
-        assert_eq!(field.one_shot(11, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&8));
+        assert_eq!(
+            field
+                .one_shot(8, node_a_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&1)
+        );
+        assert_eq!(
+            field
+                .one_shot(9, node_b_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&2)
+        );
+        assert_eq!(
+            field
+                .one_shot(10, node_c_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&3)
+        );
+        assert_eq!(
+            field
+                .one_shot(11, node_d_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>(),
+            Some(&8)
+        );
     }
 
     #[tokio::test]
-    async fn speed_bench() {}
+    async fn measure_transfer_overhead() {
+        // create field
+        let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
+
+        // create nodes
+        let (node_a, node_a_input_id, node_a_output_id) = nodes::node_a::Builder::new_debug().await;
+        let node_a_id = node_a.get_id();
+        let (node_b, node_b_input_id, node_b_output_id) = nodes::node_b::Builder::new_debug().await;
+        let node_b_id = node_b.get_id();
+        let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
+        let node_c_id = node_c.get_id();
+        let (node_d, node_d_input_id, node_d_output_id) = nodes::node_d::Builder::new_debug().await;
+        let node_d_id = node_d.get_id();
+
+        // add nodes to field
+        field.add_node(node_a);
+        field.add_node(node_b);
+        field.add_node(node_c);
+        field.add_node(node_d);
+
+        // change default value
+        field
+            .update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .await
+            .unwrap();
+
+        // connect nodes
+        field
+            .node_connect(
+                node_a_id,
+                node_a_output_id[0],
+                node_b_id,
+                node_b_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_a_id,
+                node_a_output_id[0],
+                node_c_id,
+                node_c_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_b_id,
+                node_b_output_id[0],
+                node_d_id,
+                node_d_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_c_id,
+                node_c_output_id[0],
+                node_d_id,
+                node_d_input_id[1],
+            )
+            .await
+            .unwrap();
+
+        let timer = std::time::Instant::now();
+
+        // check output
+        for i in 0..1000 {
+            assert_eq!(
+                field
+                    .one_shot(i, node_d_id)
+                    .await
+                    .unwrap()
+                    .downcast_ref::<i64>(),
+                Some(&8)
+            );
+        }
+
+        println!("1000 times took:      {:?}", timer.elapsed());
+        println!("average:              {:?}", timer.elapsed() / 1000);
+        println!("average per node:     {:?}", timer.elapsed() / 4000);
+        println!("fps per node will be: {:?}", 1.0 / (timer.elapsed().as_secs_f64() / 4000.0));
+    }
+
+    #[tokio::test]
+    async fn speed_bench_with_4k_data() {}
 
     #[cfg(test)]
     mod nodes {
