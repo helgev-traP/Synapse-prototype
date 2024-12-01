@@ -199,7 +199,7 @@ pub enum FrontToField {
     UpdateInputDefaultValue {
         node_id: NodeId,
         socket_id: SocketId,
-        value: SharedAny,
+        value: Box<SharedAny>,
     },
 }
 
@@ -242,7 +242,7 @@ pub enum NodeOrder {
 pub enum NodeResponse {
     /// Process failed
     ProcessFailed,
-    Shared(SharedAny),
+    Shared(Box<SharedAny>),
     /// Compatible check
     CompatibleCheck {
         type_id: TypeId,

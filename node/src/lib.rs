@@ -1,12 +1,13 @@
-mod node;
+pub mod types;
+pub mod node_core;
+pub mod socket;
+pub mod channel;
+pub mod err;
+pub mod field;
+pub mod framework;
 
-pub use node::types;
-pub use node::node_core;
-pub use node::socket;
-pub use node::channel;
-pub use node::err;
-pub use node::field;
-pub use node::framework;
+// System architectures
 
-#[cfg(test)]
-mod test;
+pub const BITS: usize = usize::BITS as usize;
+pub const BYTES: usize = BITS / 8;
+pub type FrameCount = i64;

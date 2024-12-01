@@ -1,4 +1,8 @@
 {
-  "cSpell.words": ["coms", "matcha", "oneshot", "Rwlock"],
-  "indentRainbow.errorColor": "rgba(128,32,32,0)"
+  "cSpell.words": ["coms"],
+  "rust-analyzer.linkedProjects": [
+    "./Cargo.toml",
+    "./main/Cargo.toml",
+    "./node/Cargo.toml"
+  ]
 }
