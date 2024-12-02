@@ -29,7 +29,7 @@ fn main() {
     for i in 0..=90 as i64 {
         println!(
             "{}",
-            "-".repeat(envelope.value(i) as usize) + "*"
+            "-".repeat(envelope.value(i as f64) as usize) + "*"
         );
     }
 }
