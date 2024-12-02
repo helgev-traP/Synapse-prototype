@@ -19,9 +19,8 @@ pub struct EnvelopeContent {
 }
 
 impl EnvelopeContent {
-    pub fn value(&self, frame: FrameCount, next_keyframe: FrameCount, next_value: f64) -> f64 {
+    pub fn value(&self, frame: f64, next_keyframe: FrameCount, next_value: f64) -> f64 {
         let self_keyframe = self.frame as f64;
-        let frame = frame as f64;
         let next_keyframe = next_keyframe as f64;
         let next_value = next_value as f64;
 
@@ -49,9 +48,8 @@ impl EnvelopeContent {
         }
     }
 
-    pub fn slope(&self, frame: FrameCount, next_keyframe: FrameCount, next_value: f64) -> f64 {
+    pub fn slope(&self, frame: f64, next_keyframe: FrameCount, next_value: f64) -> f64 {
         let self_keyframe = self.frame as f64;
-        let frame = frame as f64;
         let next_keyframe = next_keyframe as f64;
         let next_value = next_value as f64;
 
@@ -166,7 +164,7 @@ impl Envelope {
         self
     }
 
-    pub fn value(&self, frame: FrameCount) -> f64 {
+    pub fn value(&self, frame: f64) -> f64 {
         // find EnvelopeContent that contains frame
         // no curves
         if self.curves.is_empty() {
@@ -175,7 +173,7 @@ impl Envelope {
 
         let carves_len = self.curves.len();
 
-        if frame < self.curves[0].frame {
+        if frame < self.curves[0].frame as f64 {
             // left end completion
             match self.left_end_completion {
                 EnvelopeEndCompletion::Specific(v) => v,
@@ -183,19 +181,19 @@ impl Envelope {
                 EnvelopeEndCompletion::HoldSlope => {
                     let slope = if carves_len == 1 {
                         self.curves[0].slope(
-                            self.curves[0].frame,
+                            self.curves[0].frame as f64,
                             self.right_end_frame,
                             self.right_end_value,
                         )
                     } else {
                         self.curves[0].slope(
-                            self.curves[0].frame,
+                            self.curves[0].frame as f64,
                             self.curves[1].frame,
                             self.curves[1].value,
                         )
                     };
 
-                    slope * (frame - self.curves[0].frame) as f64 + self.curves[0].value
+                    slope * (frame - self.curves[0].frame as f64) + self.curves[0].value
                 }
                 EnvelopeEndCompletion::HoldCurve => {
                     if carves_len == 1 {
@@ -205,19 +203,19 @@ impl Envelope {
                     }
                 }
             }
-        } else if self.right_end_frame < frame {
+        } else if (self.right_end_frame as f64) < frame {
             // right end completion
             match self.right_end_completion {
                 EnvelopeEndCompletion::Specific(v) => v,
                 EnvelopeEndCompletion::HoldValue => self.right_end_value,
                 EnvelopeEndCompletion::HoldSlope => {
                     let slope = self.curves[carves_len - 1].slope(
-                        self.right_end_frame,
+                        self.right_end_frame as f64,
                         self.right_end_frame,
                         self.right_end_value,
                     );
 
-                    slope * (frame - self.right_end_frame) as f64 + self.right_end_value
+                    slope * (frame - self.right_end_frame as f64) + self.right_end_value
                 }
                 EnvelopeEndCompletion::HoldCurve => self.curves[carves_len - 1].value(
                     frame,
@@ -232,7 +230,7 @@ impl Envelope {
             let mut right = carves_len - 1;
             while left < right {
                 let mid = (left + right) / 2 + 1;
-                if self.curves[mid].frame < frame {
+                if (self.curves[mid].frame as f64) < frame {
                     left = mid;
                 } else {
                     right = mid - 1;
