@@ -74,7 +74,7 @@ pub mod template {
     fn node_main_process<'a>(
         name: &'a NodeName,
         input: &'a TemplateInput,
-        _: &'a mut (),
+        _: &'a mut NodeMemory,
         frame: FrameCount,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>> {
         Box::pin(async move {
@@ -141,7 +141,7 @@ pub mod template {
         fn read(
             default: Option<&Default>,
             _: Option<&Envelope>,
-            _: &mut (),
+            _: &mut Memory,
             _: FrameCount,
         ) -> SocketType {
             default.unwrap().to_string()
