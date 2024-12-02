@@ -42,9 +42,6 @@ impl<TX, RX> Channel<TX, RX> {
     }
 }
 
-pub type InputChannel = Channel<NodeOrder, NodeResponse>;
-pub type OutputChannel = Channel<NodeResponse, NodeOrder>;
-
 /// Get a pair of `types::Channel`
 /// # Example
 /// ```
@@ -214,7 +211,6 @@ pub enum FrontToFieldResult {
     NodeDisconnectSafe(Result<(), NodeDisconnectError>),
     /// # UpdateInputDefaultValueResult
     UpdateInputDefaultValue(Result<(), UpdateInputDefaultError>),
-
 }
 
 // todo Resultに移す
@@ -226,30 +222,3 @@ pub enum FieldToFrontResult {}
 pub enum FrontToNode {}
 
 pub enum NodeToFront {}
-
-// Node <-> Node
-#[derive(Debug)]
-pub enum NodeOrder {
-    /// Request
-    Request {
-        frame: FrameCount,
-    },
-    /// Type check result
-    TypeConformed,
-    TypeRejected,
-}
-
-pub enum NodeResponse {
-    /// Process failed
-    ProcessFailed,
-    Shared(Box<SharedAny>),
-    /// Compatible check
-    CompatibleCheck {
-        type_id: TypeId,
-        upstream_socket_id: SocketId,
-    },
-    /// Handle connection checker anywhere anytime.
-    ConnectionChecker(Uuid),
-    /// when default value of input is updated or upstream node is changed.
-    DeleteCache,
-}

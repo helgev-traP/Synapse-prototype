@@ -3,8 +3,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use tokio::sync::{mpsc, MutexGuard};
-use uuid::Uuid;
+use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
     socket::{InputTrait, OutputTrait},
@@ -12,9 +11,7 @@ use crate::{
 };
 
 use super::{
-    channel::{
-        channel_pair, FieldChannel, FrontToField, FrontToFieldResult, InputChannel, OutputChannel,
-    },
+    channel::FieldChannel,
     err::{
         NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
     },
@@ -38,7 +35,7 @@ pub trait NodeFieldCommon {
 
 pub struct NodeField {
     node_id: NodeId,
-    node_name: String,
+    node_name: Arc<Mutex<String>>,
     nodes: HashMap<NodeId, Arc<dyn NodeCoreCommon>>,
     channel_front: tokio::sync::Mutex<FieldChannel>,
 }
@@ -47,7 +44,7 @@ impl NodeField {
     pub fn new(name: String, channel: FieldChannel) -> Self {
         NodeField {
             node_id: NodeId::new(),
-            node_name: name,
+            node_name: Arc::new(Mutex::new(name)),
             nodes: HashMap::new(),
             channel_front: tokio::sync::Mutex::new(channel),
         }
@@ -334,15 +331,15 @@ impl NodeField {
 #[async_trait::async_trait]
 impl NodeCoreCommon for NodeField {
     fn get_id(&self) -> NodeId {
-        todo!()
+        self.node_id
     }
 
     async fn get_name(&self) -> MutexGuard<'_, String> {
-        todo!()
+        self.node_name.lock().await
     }
 
     async fn set_name(&self, name: String) {
-        todo!()
+        *self.node_name.lock().await = name;
     }
 
     async fn change_cache_depth(&self, new_cache_size: usize) {
@@ -431,7 +428,7 @@ mod tests {
         let node_b_id = node_b.get_id();
         let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
         let node_c_id = node_c.get_id();
-        let (node_d, node_d_input_id, node_d_output_id) = nodes::node_d::Builder::new_debug().await;
+        let (node_d, node_d_input_id, _) = nodes::node_d::Builder::new_debug().await;
         let node_d_id = node_d.get_id();
 
         // add nodes to field
