@@ -250,4 +250,12 @@ impl Envelope {
             }
         }
     }
+
+    pub fn slope(&self, frame: FrameCount) {
+        todo!()
+    }
+
+    pub fn integrate(&self, from: f64, to: f64) {
+        todo!()
+    }
 }
