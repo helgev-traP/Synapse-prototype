@@ -62,9 +62,7 @@ impl EnvelopeContent {
                 if *tightness != 0.0 {
                     // exponential interpolation
                     tightness / (next_keyframe - self_keyframe)
-                        * (next_value
-                            - slope_offset * (next_keyframe - self_keyframe)
-                            - self.value)
+                        * (next_value - slope_offset * (next_keyframe - self_keyframe) - self.value)
                         / (f64::consts::E.powf(*tightness) - 1.0)
                         * (f64::consts::E.powf(
                             tightness * (frame - self_keyframe) / (next_keyframe - self_keyframe),
@@ -165,7 +163,6 @@ impl Envelope {
     }
 
     pub fn value(&self, frame: f64) -> f64 {
-        // find EnvelopeContent that contains frame
         // no curves
         if self.curves.is_empty() {
             return self.right_end_value;
@@ -251,11 +248,102 @@ impl Envelope {
         }
     }
 
-    pub fn slope(&self, frame: FrameCount) {
-        todo!()
+    pub fn slope(&self, frame: f64) -> f64 {
+        // no curves
+        if self.curves.is_empty() {
+            return 0.0;
+        }
+
+        let carves_len = self.curves.len();
+
+        if frame < self.curves[0].frame as f64 {
+            // left end completion
+            match self.left_end_completion {
+                EnvelopeEndCompletion::Specific(_) | EnvelopeEndCompletion::HoldValue => 0.0,
+                EnvelopeEndCompletion::HoldSlope => {
+                    if carves_len == 1 {
+                        self.curves[0].slope(
+                            self.curves[0].frame as f64,
+                            self.right_end_frame,
+                            self.right_end_value,
+                        )
+                    } else {
+                        self.curves[0].slope(
+                            self.curves[0].frame as f64,
+                            self.curves[1].frame,
+                            self.curves[1].value,
+                        )
+                    }
+                }
+                EnvelopeEndCompletion::HoldCurve => {
+                    if carves_len == 1 {
+                        self.curves[0].slope(
+                            frame as f64,
+                            self.right_end_frame,
+                            self.right_end_value,
+                        )
+                    } else {
+                        self.curves[0].slope(
+                            frame as f64,
+                            self.curves[1].frame,
+                            self.curves[1].value,
+                        )
+                    }
+                }
+            }
+        } else if (self.right_end_frame as f64) < frame {
+            // right end completion
+            match self.right_end_completion {
+                EnvelopeEndCompletion::Specific(_) | EnvelopeEndCompletion::HoldValue => 0.0,
+                EnvelopeEndCompletion::HoldSlope => {
+                    self.curves[carves_len - 1].slope(
+                        self.right_end_frame as f64,
+                        self.right_end_frame,
+                        self.right_end_value,
+                    )
+                }
+                EnvelopeEndCompletion::HoldCurve => {
+                    self.curves[carves_len - 1].slope(
+                        frame as f64,
+                        self.right_end_frame,
+                        self.right_end_value,
+                    )
+                }
+            }
+        } else {
+            // find EnvelopeContent that contains frame
+            // binary search
+            let mut left = 0;
+            let mut right = carves_len - 1;
+            while left < right {
+                let mid = (left + right) / 2 + 1;
+                if (self.curves[mid].frame as f64) < frame {
+                    left = mid;
+                } else {
+                    right = mid - 1;
+                }
+            }
+            let index = left;
+
+            // left is the index of EnvelopeContent that contains frame
+            if index == carves_len - 1 {
+                self.curves[index].slope(
+                    frame,
+                    self.right_end_frame,
+                    self.right_end_value,
+                )
+            } else {
+                self.curves[index].slope(
+                    frame,
+                    self.curves[index + 1].frame,
+                    self.curves[index + 1].value,
+                )
+            }
+        }
     }
 
-    pub fn integrate(&self, from: f64, to: f64) {
+    /// todo
+    pub fn integrate(&self, from: f64, to: f64) -> f64 {
         todo!()
     }
 }

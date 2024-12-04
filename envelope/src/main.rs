@@ -15,11 +15,11 @@ fn main() {
             envelope::EnvelopeContent {
                 frame: 50,
                 value: 0.0,
-                curve: envelope::EnvelopeCurve::Exponential { tightness: -7.0, slope_offset: 1.0 }
+                curve: envelope::EnvelopeCurve::Exponential { tightness: -200.0, slope_offset: 1.0 }
             },
         ],
-        75,
-        50.0,
+        100,
+        100.0,
     ) else {
         panic!();
     };
@@ -28,7 +28,9 @@ fn main() {
 
     for i in 0..=90 as i64 {
         println!(
-            "{}",
+            "frame: {:>4} |slope:{:>25} |{}",
+            i,
+            envelope.slope(i as f64),
             "-".repeat(envelope.value(i as f64) as usize) + "*"
         );
     }
