@@ -142,7 +142,7 @@ where
         match self.upstream_socket.read().await.as_ref() {
             Some(socket) => {
                 // determine frame
-                let frame = self.frame_select_envelope.read().await.value(frame) as FrameCount;
+                let frame = self.frame_select_envelope.read().await.value(frame as f64) as FrameCount;
 
                 // get data from upstream
                 let data = socket
