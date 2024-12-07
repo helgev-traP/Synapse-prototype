@@ -1,11 +1,11 @@
 use std::{
     ops::Index,
-    sync::{Arc, Weak},
+    sync::Arc,
 };
 
 use tokio::sync::{Mutex, MutexGuard};
 
-use crate::socket::{OutputTrait, OutputTree, WeakInputSocket, WeakOutputSocket};
+use crate::socket::{OutputTree, WeakInputSocket, WeakOutputSocket};
 
 use super::{
     channel::{Channel, FrontToNode, NodeToFront},
@@ -265,7 +265,7 @@ where
             .await
         {
             Some(socket) => {
-                socket.upgrade().unwrap().set_default_value(default).await?;
+                socket.weak().upgrade().unwrap().set_default_value(default).await?;
                 // clear cache
                 self.cache.lock().await.clear();
                 self.output

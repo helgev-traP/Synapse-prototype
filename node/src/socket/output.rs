@@ -10,17 +10,18 @@ use crate::{
     FrameCount,
 };
 
-use super::{InputGroup, InputTrait, WeakInputSocket};
+use super::{InputGroup, InputTrait};
 
-// inner data of Output
-
-pub(crate) struct InnerOutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+pub struct OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
     NodeInputs: InputGroup + Send + Sync + 'static,
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
+    // Weak to self
+    weak: Weak<OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>>,
+
     // identifier
     id: SocketId,
     name: String,
@@ -34,9 +35,44 @@ where
     downstream: tokio::sync::Mutex<HashMap<SocketId, Weak<dyn InputTrait>>>,
 }
 
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+    OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    SocketType: Clone + Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+    pub fn new(
+        name: &str,
+        pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
+        main_body_of_node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+    ) -> Arc<Self> {
+        // OutputSocket(Arc::new(InnerOutputSocket {
+        //     id: SocketId::new(),
+        //     name: name.to_string(),
+        //     pickup,
+        //     node: main_body_of_node,
+        //     downstream: tokio::sync::Mutex::new(HashMap::new()),
+        // }))
+        Arc::new_cyclic(|weak| OutputSocket {
+            weak: weak.clone(),
+            id: SocketId::new(),
+            name: name.to_string(),
+            pickup,
+            node: main_body_of_node,
+            downstream: tokio::sync::Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn weak(&self) -> WeakOutputSocket {
+        WeakOutputSocket(self.weak.clone())
+    }
+}
+
 #[async_trait::async_trait]
 impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputTrait
-    for InnerOutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+    for OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
     NodeInputs: InputGroup + Send + Sync + 'static,
@@ -55,13 +91,17 @@ where
         self.downstream.lock().await.keys().copied().collect()
     }
 
+    fn weak(&self) -> Weak<dyn OutputTrait> {
+        self.weak.clone() as Weak<dyn OutputTrait>
+    }
+
     fn type_id(&self) -> std::any::TypeId {
         std::any::TypeId::of::<SocketType>()
     }
 
-    async fn connect(&self, socket: WeakInputSocket) {
+    async fn connect(&self, socket: Weak<dyn InputTrait>) {
         let id = socket.upgrade().unwrap().get_id();
-        self.downstream.lock().await.insert(id, socket.week());
+        self.downstream.lock().await.insert(id, socket);
     }
 
     async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError> {
@@ -104,8 +144,9 @@ pub(crate) trait OutputTrait: Send + Sync {
     async fn get_downstream_ids(&self) -> HashSet<SocketId>;
 
     // connect and disconnect
+    fn weak(&self) -> Weak<dyn OutputTrait>;
     fn type_id(&self) -> std::any::TypeId;
-    async fn connect(&self, socket: WeakInputSocket);
+    async fn connect(&self, socket: Weak<dyn InputTrait>);
     async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
 
     // --- use from InputSocket ---
@@ -116,58 +157,16 @@ pub(crate) trait OutputTrait: Send + Sync {
     async fn clear_cache(&self);
 }
 
-pub struct OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>(
-    Arc<InnerOutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>>,
-)
-where
-    SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + Sync + 'static,
-    NodeMemory: Send + Sync + 'static,
-    NodeProcessOutput: Clone + Send + Sync + 'static;
+pub struct ArcOutputSocket(Arc<dyn OutputTrait>);
 
-impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
-    OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+impl<T> From<Arc<T>> for ArcOutputSocket
 where
-    SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + Sync + 'static,
-    NodeMemory: Send + Sync + 'static,
-    NodeProcessOutput: Clone + Send + Sync + 'static,
+    T: OutputTrait + 'static,
 {
-    pub fn new(
-        name: &str,
-        pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
-        main_body_of_node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
-    ) -> Self {
-        OutputSocket(Arc::new(InnerOutputSocket {
-            id: SocketId::new(),
-            name: name.to_string(),
-            pickup,
-            node: main_body_of_node,
-            downstream: tokio::sync::Mutex::new(HashMap::new()),
-        }))
-    }
-
-    pub fn downgrade(&self) -> WeakOutputSocket {
-        let weak_data = Arc::downgrade(&self.0);
-        WeakOutputSocket(weak_data)
+    fn from(arc: Arc<T>) -> Self {
+        ArcOutputSocket(arc)
     }
 }
-
-pub struct WeakOutputSocket(Weak<dyn OutputTrait>);
-
-impl WeakOutputSocket {
-    pub(crate) fn upgrade(&self) -> Option<Arc<dyn OutputTrait>> {
-        self.0.upgrade()
-    }
-
-    pub(crate) fn week(self) -> Weak<dyn OutputTrait> {
-        self.0
-    }
-}
-
-/// this object is used to store the output socket in output tree
-/// without releasing `OutputTrait` to public.
-struct ArcOutputSocket(Arc<dyn OutputTrait>);
 
 pub enum OutputTree {
     Socket(ArcOutputSocket),
@@ -188,7 +187,7 @@ impl std::ops::Index<usize> for OutputTree {
 
 impl OutputTree {
     pub fn new<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>(
-        s: OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>,
+        socket: Arc<OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>>,
     ) -> Self
     where
         SocketType: Clone + Send + Sync + 'static,
@@ -196,7 +195,7 @@ impl OutputTree {
         NodeMemory: Send + Sync + 'static,
         NodeProcessOutput: Clone + Send + Sync + 'static,
     {
-        OutputTree::Socket(ArcOutputSocket(s.0 as Arc<dyn OutputTrait>))
+        OutputTree::Socket(ArcOutputSocket(socket))
     }
 
     pub fn vec(v: Vec<OutputTree>) -> Self {
@@ -246,7 +245,7 @@ impl OutputTree {
         match self {
             OutputTree::Socket(s) => {
                 if s.0.get_id() == id {
-                    Some(WeakOutputSocket(Arc::downgrade(&s.0)))
+                    Some(WeakOutputSocket(s.0.weak()))
                 } else {
                     None
                 }
@@ -277,5 +276,15 @@ impl OutputTree {
                 }
             }
         })
+    }
+}
+
+// WeakOutputSocket
+// to transfer OutputSocket to another thread
+pub struct WeakOutputSocket(Weak<dyn OutputTrait>);
+
+impl WeakOutputSocket {
+    pub(crate) fn weak(&self) -> Weak<dyn OutputTrait> {
+        self.0.clone()
     }
 }

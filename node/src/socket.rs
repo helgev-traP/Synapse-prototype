@@ -1,6 +1,4 @@
 mod input;
-use std::sync::Weak;
-
 pub use input::*;
 mod output;
 pub use output::*;
@@ -13,8 +11,8 @@ pub(crate) async fn connect(
     upstream: WeakOutputSocket,
     downstream: WeakInputSocket,
 ) -> Result<(), NodeConnectError> {
-    let arc_upstream = upstream.upgrade().unwrap();
-    let arc_downstream = downstream.upgrade().unwrap();
+    let arc_upstream = upstream.weak().upgrade().unwrap();
+    let arc_downstream = downstream.weak().upgrade().unwrap();
 
     // check socket type
     if arc_upstream.type_id() != arc_downstream.type_id() {
@@ -24,8 +22,8 @@ pub(crate) async fn connect(
     // ensure the downstream socket is not connected
     let _ = arc_downstream.disconnect().await;
 
-    arc_upstream.connect(downstream).await;
-    arc_downstream.connect(upstream).await;
+    arc_upstream.connect(downstream.weak()).await;
+    arc_downstream.connect(upstream.weak()).await;
 
     Ok(())
 }
@@ -34,8 +32,8 @@ pub(crate) async fn conservative_connect(
     upstream: WeakOutputSocket,
     downstream: WeakInputSocket,
 ) -> Result<(), NodeConnectError> {
-    let arc_upstream = upstream.upgrade().unwrap();
-    let arc_downstream = downstream.upgrade().unwrap();
+    let arc_upstream = upstream.weak().upgrade().unwrap();
+    let arc_downstream = downstream.weak().upgrade().unwrap();
 
     // check socket type
     if arc_upstream.type_id() != arc_downstream.type_id() {
@@ -47,8 +45,8 @@ pub(crate) async fn conservative_connect(
         return Err(NodeConnectError::InputNotEmpty);
     }
 
-    arc_upstream.connect(downstream).await;
-    arc_downstream.connect(upstream).await;
+    arc_upstream.connect(downstream.weak()).await;
+    arc_downstream.connect(upstream.weak()).await;
 
     Ok(())
 }
