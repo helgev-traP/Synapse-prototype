@@ -19,7 +19,7 @@ pub mod template {
     use super::NodeFramework;
     use crate::{
         node_core::{NodeCore, NodeCoreCommon},
-        socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+        socket::{InputGroup, InnerInputSocket, InputTrait, OutputSocket, OutputTree},
         types::{NodeName, SocketId},
         FrameCount,
     };
@@ -120,11 +120,11 @@ pub mod template {
         type Memory = ();
         type SocketType = String;
         pub type Socket =
-            InputSocket<Default, Memory, SocketType, TemplateInput, NodeMemory, NodeOutput>;
+            InnerInputSocket<Default, Memory, SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
         // build socket
         pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Socket {
-            InputSocket::new(
+            InnerInputSocket::new(
                 "input",
                 node,
                 "i64",

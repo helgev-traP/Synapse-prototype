@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use tokio::sync::{Mutex, MutexGuard, RwLock};
+use tokio::sync::{Mutex, MutexGuard};
 
-use crate::socket::{InputTrait, OutputTrait, OutputTree};
+use crate::socket::{OutputTrait, OutputTree, WeakInputSocket, WeakOutputSocket};
 
 use super::{
     channel::{Channel, FrontToNode, NodeToFront},
@@ -233,7 +233,7 @@ where
         self.cache.lock().await.len()
     }
 
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket> {
         self.input
             .lock()
             .await
@@ -243,7 +243,7 @@ where
             .await
     }
 
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket> {
         self.output
             .lock()
             .await
@@ -304,8 +304,8 @@ pub trait NodeCoreCommon: Send + Sync {
     async fn cache_depth(&self) -> usize;
     async fn cache_size(&self) -> usize;
     // get input/output socket to: connect, disconnect
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>>;
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>>;
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket>;
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket>;
     // update default value of input
     async fn update_input_default(
         &self,
@@ -424,7 +424,6 @@ impl<T> Cache<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::socket::InputSocket;
 
     use super::super::types::SharedAny;
     use envelope::Envelope;

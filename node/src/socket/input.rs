@@ -5,9 +5,7 @@ use std::{
 use tokio::sync::{RwLock, RwLockReadGuard};
 
 use crate::{
-    err::{
-        NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError,
-    },
+    err::{NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError},
     node_core::{NodeCore, NodeCoreCommon},
     socket::output::OutputTrait,
     types::{SharedAny, SocketId},
@@ -15,6 +13,8 @@ use crate::{
 };
 
 use envelope::Envelope;
+
+use super::WeakOutputSocket;
 
 /// # ReadFn
 // todo クロージャを宣言するときに無駄な引数を取る必要が無いようにしたい
@@ -55,8 +55,14 @@ where
 
 /// # Input
 
-pub struct InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-where
+pub(crate) struct InnerInputSocket<
+    Default,
+    Memory,
+    Output,
+    NodeInputs,
+    NodeMemory,
+    NodeProcessOutput,
+> where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
     Output: Send + Sync + 'static,
@@ -89,103 +95,9 @@ where
     upstream_socket: RwLock<Option<Weak<dyn OutputTrait>>>,
 }
 
-/// build chain
-impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-where
-    Default: Send + Sync + 'static,
-    Memory: Send + Sync + 'static,
-    Output: Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + Sync + 'static,
-    NodeMemory: Send + Sync + 'static,
-    NodeProcessOutput: Clone + Send + Sync + 'static,
-{
-    pub fn new(
-        name: &str,
-        node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
-        default_value_name: &str,
-        default_value: Option<Default>,
-        envelope_name: &str,
-        envelope: Option<Envelope>,
-        memory: Memory,
-        reading_fn: Box<dyn for<'b> ReadingFn<'b, Default, Memory, Output>>,
-        frame_select_envelope: Envelope,
-    ) -> Self {
-        InputSocket {
-            id: SocketId::new(),
-            name: name.to_string(),
-            node,
-            default_value_name: default_value_name.to_string(),
-            default_value: default_value.map(|data| RwLock::new(data)),
-            envelope_name: envelope_name.to_string(),
-            envelope: envelope.map(|data| RwLock::new(data)),
-            memory: RwLock::new(memory),
-            reading_fn,
-            frame_select_envelope: RwLock::new(frame_select_envelope),
-            upstream_socket: RwLock::new(None),
-        }
-    }
-}
-
-/// get socket value
-impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
-where
-    Default: Send + Sync + 'static,
-    Memory: Send + Sync + 'static,
-    Output: Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + Sync + 'static,
-    NodeMemory: Send + Sync + 'static,
-    NodeProcessOutput: Clone + Send + Sync + 'static,
-{
-    pub async fn get(&self, frame: FrameCount) -> Output {
-        match self.upstream_socket.read().await.as_ref() {
-            Some(socket) => {
-                // determine frame
-                let frame = self.frame_select_envelope.read().await.value(frame as f64) as FrameCount;
-
-                // get data from upstream
-                let data = socket
-                    .upgrade()
-                    .unwrap()
-                    .call(frame)
-                    .await
-                    .downcast()
-                    .unwrap();
-
-                *data
-            }
-            None => {
-                let default_rw_guard;
-                let default = match self.default_value.as_ref() {
-                    Some(data) => {
-                        default_rw_guard = data.read().await;
-                        Some(&*default_rw_guard)
-                    }
-                    None => None,
-                };
-
-                let envelope_rw_guard;
-                let envelope = match self.envelope.as_ref() {
-                    Some(data) => {
-                        envelope_rw_guard = data.read().await;
-                        Some(&*envelope_rw_guard)
-                    }
-                    None => None,
-                };
-
-                self.reading_fn
-                    .call(default, envelope, &mut *self.memory.write().await, frame)
-            }
-        }
-    }
-}
-
-/// # InputCommon
-
 #[async_trait::async_trait]
 impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputTrait
-    for InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+    for InnerInputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     Default: Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -262,7 +174,8 @@ where
     // get upstream socket id
     async fn get_upstream_socket_id(&self) -> Option<SocketId> {
         Some(
-            self.upstream_socket
+            self
+                .upstream_socket
                 .read()
                 .await
                 .as_ref()?
@@ -277,8 +190,8 @@ where
         std::any::TypeId::of::<Output>()
     }
 
-    async fn connect(&self, socket: Weak<dyn OutputTrait>) {
-        *self.upstream_socket.write().await = Some(socket);
+    async fn connect(&self, socket: WeakOutputSocket) {
+        *self.upstream_socket.write().await = Some(socket.week());
     }
 
     async fn disconnect(&self) -> Result<(), NodeDisconnectError> {
@@ -306,6 +219,120 @@ where
     // --- use from OutputSocket ---
     async fn clear_cache(&self) {
         self.node.clear_cache().await;
+    }
+}
+
+pub struct InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>(
+    Arc<InnerInputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>>,
+)
+where
+    Default: Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static;
+
+/// build chain
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    Default: Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+    pub fn new(
+        name: &str,
+        node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+        default_value_name: &str,
+        default_value: Option<Default>,
+        envelope_name: &str,
+        envelope: Option<Envelope>,
+        memory: Memory,
+        reading_fn: Box<dyn for<'b> ReadingFn<'b, Default, Memory, Output>>,
+        frame_select_envelope: Envelope,
+    ) -> Self {
+        InputSocket(Arc::new(InnerInputSocket {
+            id: SocketId::new(),
+            name: name.to_string(),
+            node,
+            default_value_name: default_value_name.to_string(),
+            default_value: default_value.map(|data| RwLock::new(data)),
+            envelope_name: envelope_name.to_string(),
+            envelope: envelope.map(|data| RwLock::new(data)),
+            memory: RwLock::new(memory),
+            reading_fn,
+            frame_select_envelope: RwLock::new(frame_select_envelope),
+            upstream_socket: RwLock::new(None),
+        }))
+    }
+
+    pub fn downgrade(&self) -> WeakInputSocket {
+        let weak_data = Arc::downgrade(&self.0);
+        WeakInputSocket(weak_data)
+    }
+}
+
+/// get socket value
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    Default: Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+    pub async fn get(&self, frame: FrameCount) -> Output {
+        match self.0.upstream_socket.read().await.as_ref() {
+            Some(socket) => {
+                // determine frame
+                let frame = self
+                    .0
+                    .frame_select_envelope
+                    .read()
+                    .await
+                    .value(frame as f64) as FrameCount;
+
+                // get data from upstream
+                let data = socket
+                    .upgrade()
+                    .unwrap()
+                    .call(frame)
+                    .await
+                    .downcast()
+                    .unwrap();
+
+                *data
+            }
+            None => {
+                let default_rw_guard;
+                let default = match self.0.default_value.as_ref() {
+                    Some(data) => {
+                        default_rw_guard = data.read().await;
+                        Some(&*default_rw_guard)
+                    }
+                    None => None,
+                };
+
+                let envelope_rw_guard;
+                let envelope = match self.0.envelope.as_ref() {
+                    Some(data) => {
+                        envelope_rw_guard = data.read().await;
+                        Some(&*envelope_rw_guard)
+                    }
+                    None => None,
+                };
+
+                self.0
+                    .reading_fn
+                    .call(default, envelope, &mut *self.0.memory.write().await, frame)
+            }
+        }
     }
 }
 
@@ -337,14 +364,26 @@ pub(crate) trait InputTrait: Send + Sync {
 
     // connect and disconnect
     fn type_id(&self) -> std::any::TypeId;
-    async fn connect(&self, socket: Weak<dyn OutputTrait>);
+    async fn connect(&self, socket: WeakOutputSocket);
     async fn disconnect(&self) -> Result<(), NodeDisconnectError>;
 
     // --- use from OutputSocket ---
     async fn clear_cache(&self);
 }
 
+pub struct WeakInputSocket(Weak<dyn InputTrait>);
+
+impl WeakInputSocket {
+    pub(crate) fn upgrade(&self) -> Option<Arc<dyn InputTrait>> {
+        self.0.upgrade()
+    }
+
+    pub(crate) fn week(self) -> Weak<dyn InputTrait> {
+        self.0
+    }
+}
+
 #[async_trait::async_trait]
 pub trait InputGroup: Send + 'static {
-    async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>>;
+    async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket>;
 }

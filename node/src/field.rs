@@ -6,7 +6,7 @@ use std::{
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
-    socket::{InputTrait, OutputTrait},
+    socket::{OutputTrait, WeakInputSocket, WeakOutputSocket},
     FrameCount,
 };
 
@@ -171,6 +171,7 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
+            .map(|socket| socket.week())
         else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
@@ -204,6 +205,7 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
+            .map(|socket| socket.week())
         else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
@@ -249,6 +251,7 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
+            .map(|socket| socket.week())
         else {
             return Err(NodeConnectionCheckError::SocketIdNotFound);
         };
@@ -358,11 +361,11 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket> {
         todo!()
     }
 
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket> {
         todo!()
     }
 
@@ -404,10 +407,7 @@ impl FromToBinary for NodeField {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        channel::result_channel_pair,
-        framework::NodeFramework,
-    };
+    use crate::{channel::result_channel_pair, framework::NodeFramework};
 
     use super::*;
 
@@ -776,7 +776,10 @@ mod tests {
                 field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket,
+                    OutputTree, WeakInputSocket,
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -848,9 +851,9 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
                     if id == self.input_1.get_id() {
-                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                        Some(Arc::downgrade(&self.input_1) as WeakInputSocket)
                     } else {
                         None
                     }
@@ -869,6 +872,7 @@ mod tests {
             // Input Sockets
 
             mod input_1 {
+
                 use super::*;
 
                 // types
@@ -934,7 +938,10 @@ mod tests {
                 field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket,
+                    OutputTree, WeakInputSocket,
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -1034,11 +1041,11 @@ mod tests {
                 type Memory = ();
                 type SocketType = i64;
                 pub type Socket =
-                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+                    InnerInputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
                 pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
-                    InputSocket::new(
+                    InnerInputSocket::new(
                         "input",
                         node,
                         "i64",
@@ -1092,7 +1099,10 @@ mod tests {
                 field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket,
+                    OutputTree, WeakInputSocket,
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -1192,11 +1202,11 @@ mod tests {
                 type Memory = ();
                 type SocketType = i64;
                 pub type Socket =
-                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+                    InnerInputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
                 pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
-                    InputSocket::new(
+                    InnerInputSocket::new(
                         "input",
                         node,
                         "i64",
@@ -1250,7 +1260,10 @@ mod tests {
                 field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket,
+                    OutputTree, WeakInputSocket,
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -1360,11 +1373,11 @@ mod tests {
                 type Memory = ();
                 type SocketType = i64;
                 pub type Socket =
-                    InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
+                    InnerInputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
                 pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
-                    InputSocket::new(
+                    InnerInputSocket::new(
                         "input",
                         node,
                         "i64",
