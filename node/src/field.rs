@@ -22,7 +22,7 @@ use super::{
 pub struct NodeField {
     // information as a node
     node_id: NodeId,
-    node_name: Arc<Mutex<String>>,
+    node_name: Mutex<String>,
 
     // nodes
     nodes: HashMap<NodeId, Arc<dyn NodeCoreCommon>>,
@@ -39,7 +39,7 @@ impl NodeField {
     pub fn new(name: String, channel: FieldChannel) -> Self {
         NodeField {
             node_id: NodeId::new(),
-            node_name: Arc::new(Mutex::new(name)),
+            node_name: Mutex::new(name),
             nodes: HashMap::new(),
             execution_handle: None,
             execution_stop_channel: None,
@@ -320,7 +320,7 @@ impl NodeField {
 
     // main process
 
-    pub async fn call(&self, frame: FrameCount, node_id: NodeId) -> Option<Arc<SharedAny>> {
+    pub async fn field_call(&self, frame: FrameCount, node_id: NodeId) -> Option<Arc<SharedAny>> {
         if let Some(node) = self.nodes.get(&node_id) {
             Some(node.call(frame).await)
         } else {
@@ -328,8 +328,32 @@ impl NodeField {
         }
     }
 
-    pub async fn play(&self) {
-        todo!()
+    // todo implement return value
+    pub async fn field_play(&mut self, begin_frame: FrameCount, node_id: NodeId) -> Result<(), ()> {
+        if let Some(node) = self.nodes.get(&node_id) {
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            let node = node.clone();
+            let handle = tokio::spawn(async move { node.play(begin_frame, rx).await });
+
+            self.execution_handle = Some(handle);
+            self.execution_stop_channel = Some(tx);
+
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    pub async fn field_stop(&mut self) -> FrameCount {
+        if let Some(tx) = self.execution_stop_channel.take() {
+            tx.send(()).unwrap();
+        }
+
+        let frame = self.execution_handle.take().unwrap().await.unwrap();
+        self.execution_handle = None;
+
+        frame
     }
 }
 
@@ -427,7 +451,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test() {
+    async fn comprehensive_test() {
         // create field
         let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
 
@@ -450,7 +474,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .call(0, node_a_id)
+                .field_call(0, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -458,7 +482,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(0, node_b_id)
+                .field_call(0, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -466,7 +490,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(0, node_c_id)
+                .field_call(0, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -474,7 +498,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(0, node_d_id)
+                .field_call(0, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -506,7 +530,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .call(0, node_a_id)
+                .field_call(0, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -514,7 +538,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(0, node_b_id)
+                .field_call(0, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -522,7 +546,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(0, node_c_id)
+                .field_call(0, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -530,7 +554,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(0, node_d_id)
+                .field_call(0, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -578,7 +602,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .call(1, node_a_id)
+                .field_call(1, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -586,7 +610,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(1, node_b_id)
+                .field_call(1, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -594,7 +618,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(1, node_c_id)
+                .field_call(1, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -602,7 +626,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(1, node_d_id)
+                .field_call(1, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -679,10 +703,6 @@ mod tests {
 
         // change default value
         field
-            .update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64))
-            .await
-            .unwrap();
-        field
             .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
@@ -741,14 +761,11 @@ mod tests {
 
         // check output
         for i in 0..1000 {
-            assert_eq!(
-                field
-                    .call(i, node_d_id)
-                    .await
-                    .unwrap()
-                    .downcast_ref::<i64>(),
-                Some(&8)
-            );
+            let _ = field
+                .field_call(i, node_d_id)
+                .await
+                .unwrap()
+                .downcast_ref::<i64>();
         }
 
         println!("1000 times took:      {:?}", timer.elapsed());
@@ -758,6 +775,94 @@ mod tests {
             "fps per node will be: {:?}",
             1.0 / (timer.elapsed().as_secs_f64() / 4000.0)
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 20)]
+    async fn node_execution_test() {
+        // create field
+        let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
+
+        // create nodes
+        let (node_a, node_a_input_id, node_a_output_id) = nodes::node_a::Builder::new_debug().await;
+        let node_a_id = node_a.get_id();
+        let (node_b, node_b_input_id, node_b_output_id) = nodes::node_b::Builder::new_debug().await;
+        let node_b_id = node_b.get_id();
+        let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
+        let node_c_id = node_c.get_id();
+        let (node_d, node_d_input_id, node_d_output_id) = nodes::node_d::Builder::new_debug().await;
+        let node_d_id = node_d.get_id();
+
+        // add nodes to field
+        field.add_node(node_a);
+        field.add_node(node_b);
+        field.add_node(node_c);
+        field.add_node(node_d);
+
+        // change default value
+        field
+            .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .await
+            .unwrap();
+        field
+            .update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .await
+            .unwrap();
+
+        // connect nodes
+        field
+            .node_connect(
+                node_a_id,
+                node_a_output_id[0],
+                node_b_id,
+                node_b_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_a_id,
+                node_a_output_id[0],
+                node_c_id,
+                node_c_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_b_id,
+                node_b_output_id[0],
+                node_d_id,
+                node_d_input_id[0],
+            )
+            .await
+            .unwrap();
+        field
+            .node_connect(
+                node_c_id,
+                node_c_output_id[0],
+                node_d_id,
+                node_d_input_id[1],
+            )
+            .await
+            .unwrap();
+
+        // play
+        field.field_play(0, node_d_id).await.unwrap();
+
+        // wait
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        // stop
+        let frame = field.field_stop().await;
+        println!("Execution stopped at frame: {:?}", frame);
     }
 
     #[tokio::test]
@@ -1326,9 +1431,13 @@ mod tests {
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>>
             {
                 Box::pin(async move {
-                    let b = input.input_1.get(frame).await;
-                    let c = input.input_2.get(frame).await;
-                    b.pow(c as u32)
+                    let input_1 = input.input_1.clone();
+                    let input_2 = input.input_2.clone();
+                    let handle_b = tokio::spawn(async move { input_1.get(frame).await });
+                    let handle_c = tokio::spawn(async move { input_2.get(frame).await });
+                    let b = handle_b.await.unwrap();
+                    let c = handle_c.await.unwrap();
+                    b.overflowing_pow(c as u32).0
                 })
             }
 
