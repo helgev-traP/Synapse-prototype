@@ -295,29 +295,39 @@ where
         std::any::TypeId::of::<Output>()
     }
 
-    async fn connect(&self, socket: Weak<dyn OutputTrait>) {
-        *self.upstream_socket.write().await = Some(socket);
+    fn connect(&self, socket: Weak<dyn OutputTrait>) {
+        tokio::task::block_in_place(|| {
+            *self.upstream_socket.blocking_write() = Some(socket);
+        });
     }
 
-    async fn disconnect(&self) -> Result<(), NodeDisconnectError> {
-        let mut socket_holder = self.upstream_socket.write().await;
-
-        let Some(socket) = socket_holder.as_ref() else {
-            return Err(NodeDisconnectError::NotConnected);
-        };
-
-        let socket = socket.upgrade().unwrap();
-
-        // disconnect
-        if let Err(e) = socket.disconnect(self.id).await {
-            if let NodeDisconnectError::NotConnected = e {
-                println!("NodeDisconnectError: Data inconsistency occurred.");
+    fn disconnect(&self) -> Result<(), NodeDisconnectError> {
+        tokio::task::block_in_place(|| {
+            // make upstream socket disconnect
+            let mut socket_holder = self.upstream_socket.blocking_write();
+            let Some(socket) = socket_holder.as_ref() else {
+                return Err(NodeDisconnectError::NotConnected);
+            };
+            let socket = socket.upgrade().unwrap();
+            if let Err(e) = socket.disconnect(self.id) {
+                if let NodeDisconnectError::NotConnected = e {
+                    println!("NodeDisconnectError: Data inconsistency occurred.");
+                }
             }
-        }
 
-        // clear upstream socket
-        *socket_holder = None;
+            // clear upstream socket
+            *socket_holder = None;
 
+            Ok(())
+        })
+    }
+
+    /// Disconnect without calling OutputSocket::disconnect.
+    /// This is used when OutputSocket::disconnect_all is called.
+    fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError> {
+        tokio::task::block_in_place(|| {
+            *self.upstream_socket.blocking_write() = None;
+        });
         Ok(())
     }
 
@@ -355,8 +365,9 @@ pub(crate) trait InputTrait: Send + Sync {
 
     // connect and disconnect
     fn type_id(&self) -> std::any::TypeId;
-    async fn connect(&self, socket: Weak<dyn OutputTrait>);
-    async fn disconnect(&self) -> Result<(), NodeDisconnectError>;
+    fn connect(&self, socket: Weak<dyn OutputTrait>);
+    fn disconnect(&self) -> Result<(), NodeDisconnectError>;
+    fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError>;
 
     // --- use from OutputSocket ---
     async fn clear_cache(&self);

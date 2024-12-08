@@ -252,6 +252,15 @@ where
             .get_socket(socket_id)
     }
 
+    async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket> {
+        self.output
+            .lock()
+            .await
+            .as_ref()
+            .expect("input is not set.")
+            .get_all_socket()
+    }
+
     async fn update_input_default(
         &self,
         input_socket_id: SocketId,
@@ -285,8 +294,19 @@ where
         self.call(frame).await
     }
 
-    async fn play(&self, frame: FrameCount) {
-        todo!()
+    async fn play(&self, begin_frame: FrameCount, stop_channel: std::sync::mpsc::Receiver<()>) -> FrameCount {
+        let mut frame = begin_frame;
+        loop {
+            // call main process repeatedly
+            self.call(frame).await;
+            frame += 1;
+
+            // check stop
+            if stop_channel.try_recv().is_ok() {
+                break;
+            }
+        }
+        frame
     }
 }
 
@@ -306,6 +326,7 @@ pub trait NodeCoreCommon: Send + Sync {
     // get input/output socket to: connect, disconnect
     async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket>;
     async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket>;
+    async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket>;
     // update default value of input
     async fn update_input_default(
         &self,
@@ -315,7 +336,8 @@ pub trait NodeCoreCommon: Send + Sync {
     // calling one frame
     async fn call(&self, frame: FrameCount) -> Arc<SharedAny>;
     // main playing process(play)
-    async fn play(&self, frame: FrameCount);
+    /// This function returns Future to be executed by node field.
+    async fn play(&self, begin_frame: FrameCount, stop_channel: std::sync::mpsc::Receiver<()>) -> FrameCount;
 }
 
 // --- Cache ---

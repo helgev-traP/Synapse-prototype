@@ -19,24 +19,19 @@ use super::{
     types::{FromToBinary, NodeId, SharedAny, SocketId},
 };
 
-// todo いらないかも
-pub trait NodeFieldCommon {
-    fn add_node(&mut self, node: Box<dyn NodeCoreCommon>);
-    fn remove_node(&mut self, node_id: &NodeId);
-    fn get_node(
-        &self,
-        node_id: &NodeId,
-    ) -> Option<Arc<std::sync::Mutex<Box<dyn NodeCoreCommon + 'static>>>>;
-    fn check_consistency(&self) -> bool;
-    fn ensure_consistency(&mut self);
-    // main loop
-    fn main_loop();
-}
-
 pub struct NodeField {
+    // information as a node
     node_id: NodeId,
     node_name: Arc<Mutex<String>>,
+
+    // nodes
     nodes: HashMap<NodeId, Arc<dyn NodeCoreCommon>>,
+
+    // handle of node execution
+    execution_handle: Option<tokio::task::JoinHandle<FrameCount>>,
+    execution_stop_channel: Option<std::sync::mpsc::Sender<()>>,
+
+    // channel to front
     channel_front: tokio::sync::Mutex<FieldChannel>,
 }
 
@@ -46,6 +41,8 @@ impl NodeField {
             node_id: NodeId::new(),
             node_name: Arc::new(Mutex::new(name)),
             nodes: HashMap::new(),
+            execution_handle: None,
+            execution_stop_channel: None,
             channel_front: tokio::sync::Mutex::new(channel),
         }
     }
@@ -177,7 +174,7 @@ impl NodeField {
         };
 
         // disconnect
-        downstream_socket.upgrade().unwrap().disconnect().await
+        downstream_socket.upgrade().unwrap().disconnect()
     }
 
     pub async fn node_conservative_disconnect(
@@ -220,7 +217,7 @@ impl NodeField {
             .contains(&downstream_socket.get_id())
         {
             // disconnect
-            upstream_socket.disconnect(downstream_socket.get_id()).await
+            upstream_socket.disconnect(downstream_socket.get_id())
         } else {
             Err(NodeDisconnectError::NotConnected)
         }
@@ -271,15 +268,39 @@ impl NodeField {
         }
     }
 
-    /*
+    pub async fn node_output_socket_disconnect_all(
+        &mut self,
+        node_id: NodeId,
+        socket_id: SocketId,
+    ) -> Result<(), NodeDisconnectError> {
+        // get socket
+        let Some(node) = self.nodes.get(&node_id) else {
+            return Err(NodeDisconnectError::NodeIdNotFound);
+        };
+        let Some(socket) = node.get_output_socket(socket_id).await else {
+            return Err(NodeDisconnectError::SocketIdNotFound);
+        };
+        let socket = socket.weak().upgrade().unwrap();
+
+        // disconnect all
+        socket.disconnect_all()
+    }
+
     pub async fn node_disconnect_all(
         &mut self,
         node_id: &NodeId,
-        socket_id: &SocketId,
     ) -> Result<(), NodeDisconnectError> {
-        todo!()
+        // get node
+        let Some(node) = self.nodes.get(node_id) else {
+            return Err(NodeDisconnectError::NodeIdNotFound);
+        };
+
+        // disconnect all
+        node.get_all_output_socket().await.iter().try_for_each(|socket| {
+            let socket = socket.weak().upgrade().unwrap();
+            socket.disconnect_all()
+        })
     }
-    */
 
     // update input default of node
     pub async fn update_input_default(
@@ -297,28 +318,7 @@ impl NodeField {
 
     // main process
 
-    /*
-    pub async fn main_oneshot(&self) {
-        let mut handles = Vec::new();
-
-        for (_, node) in self.nodes.iter() {
-            // execute node's main
-            let node = node.clone();
-
-            // task spawn
-            handles.push(tokio::spawn(async move {
-                let mut node = node.lock().await;
-                (*node).main().await;
-            }));
-        }
-
-        for handle in handles {
-            handle.await.unwrap();
-        }
-    }
-    */
-
-    pub async fn one_shot(&self, frame: FrameCount, node_id: NodeId) -> Option<Arc<SharedAny>> {
+    pub async fn call(&self, frame: FrameCount, node_id: NodeId) -> Option<Arc<SharedAny>> {
         if let Some(node) = self.nodes.get(&node_id) {
             Some(node.call(frame).await)
         } else {
@@ -369,6 +369,10 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
+    async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket> {
+        todo!()
+    }
+
     async fn update_input_default(
         &self,
         input_socket_id: SocketId,
@@ -381,7 +385,11 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    async fn play(&self, frame: FrameCount) {
+    async fn play(
+        &self,
+        frame: FrameCount,
+        stop_channel: std::sync::mpsc::Receiver<()>,
+    ) -> FrameCount {
         todo!()
     }
 }
@@ -440,7 +448,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .one_shot(0, node_a_id)
+                .call(0, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -448,7 +456,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(1, node_b_id)
+                .call(1, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -456,7 +464,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(2, node_c_id)
+                .call(2, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -464,7 +472,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(3, node_d_id)
+                .call(3, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -496,7 +504,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .one_shot(4, node_a_id)
+                .call(4, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -504,7 +512,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(5, node_b_id)
+                .call(5, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -512,7 +520,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(6, node_c_id)
+                .call(6, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -520,7 +528,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(7, node_d_id)
+                .call(7, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -568,7 +576,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .one_shot(8, node_a_id)
+                .call(8, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -576,7 +584,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(9, node_b_id)
+                .call(9, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -584,7 +592,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(10, node_c_id)
+                .call(10, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -592,7 +600,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .one_shot(11, node_d_id)
+                .call(11, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -733,7 +741,7 @@ mod tests {
         for i in 0..1000 {
             assert_eq!(
                 field
-                    .one_shot(i, node_d_id)
+                    .call(i, node_d_id)
                     .await
                     .unwrap()
                     .downcast_ref::<i64>(),
@@ -776,7 +784,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
+                    WeakInputSocket,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -934,7 +943,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
+                    WeakInputSocket,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1091,7 +1101,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
+                    WeakInputSocket,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1248,7 +1259,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
+                    WeakInputSocket,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
