@@ -424,10 +424,6 @@ impl<T> Cache<T> {
 
 #[cfg(test)]
 mod tests {
-
-    use super::super::types::SharedAny;
-    use envelope::Envelope;
-
     use super::*;
 
     #[test]
@@ -457,30 +453,4 @@ mod tests {
         cache.clear();
         assert_eq!(cache.get_first().is_none(), true);
     }
-
-    fn read(default: &i64, _: &mut (), _: &Envelope, _: FrameCount) -> i64 {
-        *default
-    }
-
-    fn node_process<'a>(
-        input: Arc<tokio::sync::Mutex<dyn InputGroup>>,
-        _: &mut (),
-        frame: FrameCount,
-        _: &NodeId,
-        _: &NodeName,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = i64> + Send + 'a>> {
-        let input = input.clone();
-        Box::pin(async move { todo!() })
-    }
-
-    fn pickup(output: &i64) -> Box<SharedAny> {
-        todo!()
-    }
-
-    fn get_node(name: String, default: i64) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId) {
-        todo!()
-    }
-
-    #[tokio::test]
-    async fn node_core_communicate_test() {}
 }
