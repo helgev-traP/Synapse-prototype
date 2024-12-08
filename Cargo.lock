@@ -121,6 +121,7 @@ name = "main"
 version = "0.1.0"
 dependencies = [
  "node",
+ "tokio",
 ]
 
 [[package]]

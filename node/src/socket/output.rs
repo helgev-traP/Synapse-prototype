@@ -99,41 +99,36 @@ where
         std::any::TypeId::of::<SocketType>()
     }
 
-    fn connect(&self, socket: Weak<dyn InputTrait>) {
-        tokio::task::block_in_place(|| {
-            let id = socket.upgrade().unwrap().get_id();
-            self.downstream.blocking_lock().insert(id, socket);
-        });
+    async fn connect(&self, socket: Weak<dyn InputTrait>) {
+        let id = socket.upgrade().unwrap().get_id();
+        self.downstream.lock().await.insert(id, socket);
     }
 
-    fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError> {
-        tokio::task::block_in_place(|| {
-            if self
-                .downstream
-                .blocking_lock()
-                .remove(&downstream_id)
-                .is_none()
-            {
-                return Err(NodeDisconnectError::NotConnected);
+    async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError> {
+        if self
+            .downstream
+            .lock()
+            .await
+            .remove(&downstream_id)
+            .is_none()
+        {
+            return Err(NodeDisconnectError::NotConnected);
+        }
+        Ok(())
+    }
+
+    async fn disconnect_all(&self) -> Result<(), NodeDisconnectError> {
+        // disconnect all downstream nodes
+        for socket in self.downstream.lock().await.values() {
+            if let Some(socket) = socket.upgrade() {
+                socket.disconnect_called_from_upstream().await.unwrap();
             }
-            Ok(())
-        })
-    }
+        }
 
-    fn disconnect_all(&self) -> Result<(), NodeDisconnectError> {
-        tokio::task::block_in_place(|| {
-            // disconnect all downstream nodes
-            self.downstream.blocking_lock().values().for_each(|socket| {
-                if let Some(socket) = socket.upgrade() {
-                    socket.disconnect_called_from_upstream().unwrap();
-                }
-            });
+        // clear downstream nodes
+        self.downstream.lock().await.clear();
 
-            // clear downstream nodes
-            self.downstream.blocking_lock().clear();
-
-            Ok(())
-        })
+        Ok(())
     }
 
     async fn call(&self, frame: FrameCount) -> Box<SharedAny> {
@@ -165,9 +160,9 @@ pub(crate) trait OutputTrait: Send + Sync {
     // connect and disconnect
     fn weak(&self) -> Weak<dyn OutputTrait>;
     fn type_id(&self) -> std::any::TypeId;
-    fn connect(&self, socket: Weak<dyn InputTrait>);
-    fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
-    fn disconnect_all(&self) -> Result<(), NodeDisconnectError>;
+    async fn connect(&self, socket: Weak<dyn InputTrait>);
+    async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
+    async fn disconnect_all(&self) -> Result<(), NodeDisconnectError>;
 
     // --- use from InputSocket ---
     // called by downstream socket

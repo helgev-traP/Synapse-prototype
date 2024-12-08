@@ -216,6 +216,9 @@ where
         self.cache.lock().await.clear();
 
         // send cache clear to downstream
+        for socket  in self.output.lock().await.as_ref().unwrap().get_all_socket() {
+            socket.weak().upgrade().unwrap().clear_cache().await;
+        }
     }
 
     async fn cache_depth(&self) -> usize {

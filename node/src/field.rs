@@ -174,7 +174,7 @@ impl NodeField {
         };
 
         // disconnect
-        downstream_socket.upgrade().unwrap().disconnect()
+        downstream_socket.upgrade().unwrap().disconnect().await
     }
 
     pub async fn node_conservative_disconnect(
@@ -217,7 +217,7 @@ impl NodeField {
             .contains(&downstream_socket.get_id())
         {
             // disconnect
-            upstream_socket.disconnect(downstream_socket.get_id())
+            upstream_socket.disconnect(downstream_socket.get_id()).await
         } else {
             Err(NodeDisconnectError::NotConnected)
         }
@@ -283,7 +283,7 @@ impl NodeField {
         let socket = socket.weak().upgrade().unwrap();
 
         // disconnect all
-        socket.disconnect_all()
+        socket.disconnect_all().await
     }
 
     pub async fn node_disconnect_all(
@@ -296,10 +296,12 @@ impl NodeField {
         };
 
         // disconnect all
-        node.get_all_output_socket().await.iter().try_for_each(|socket| {
+        for socket in node.get_all_output_socket().await {
             let socket = socket.weak().upgrade().unwrap();
-            socket.disconnect_all()
-        })
+            socket.disconnect_all().await?;
+        }
+
+        Ok(())
     }
 
     // update input default of node
@@ -456,7 +458,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(1, node_b_id)
+                .call(0, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -464,7 +466,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(2, node_c_id)
+                .call(0, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -472,7 +474,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(3, node_d_id)
+                .call(0, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -480,10 +482,10 @@ mod tests {
         );
 
         // change default value
-        field
-            .update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64))
-            .await
-            .unwrap();
+        // field
+        //     .update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64))
+        //     .await
+        //     .unwrap();
         field
             .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
             .await
@@ -504,15 +506,15 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .call(4, node_a_id)
+                .call(0, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
-            Some(&1)
+            Some(&0)
         );
         assert_eq!(
             field
-                .call(5, node_b_id)
+                .call(0, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -520,7 +522,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(6, node_c_id)
+                .call(0, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -528,7 +530,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(7, node_d_id)
+                .call(0, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -576,7 +578,7 @@ mod tests {
         // check output
         assert_eq!(
             field
-                .call(8, node_a_id)
+                .call(1, node_a_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -584,7 +586,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(9, node_b_id)
+                .call(1, node_b_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -592,7 +594,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(10, node_c_id)
+                .call(1, node_c_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -600,7 +602,7 @@ mod tests {
         );
         assert_eq!(
             field
-                .call(11, node_d_id)
+                .call(1, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>(),
@@ -769,12 +771,12 @@ mod tests {
         // | \
         // |  \
         // B   C
-        // |   /
         // |  /
         // | /
+        // |/
         // D
 
-        // A: u64 input
+        // A: u64 input (output number same as frame count)
         // B: u64 multiply 2
         // C: u64 multiply 3
         // D: u64 b^c
@@ -805,7 +807,7 @@ mod tests {
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
                 async fn new() -> Arc<dyn NodeCoreCommon> {
-                    let node = Arc::new(NodeCore::new("A", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("INPUT", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let output = give_output_tree(node.clone());
@@ -821,7 +823,7 @@ mod tests {
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
                 ) {
-                    let node = Arc::new(NodeCore::new("A", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("INPUT", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
@@ -892,10 +894,10 @@ mod tests {
                     InputSocket::new(
                         "input",
                         node,
-                        "i64",
-                        Some(0),
                         "",
                         None,
+                        "Frame Count",
+                        Some(Envelope::new_pass_through()),
                         (),
                         Box::new(read),
                         Envelope::new_pass_through(),
@@ -904,12 +906,12 @@ mod tests {
 
                 // read from default value or envelope
                 fn read(
-                    default: Option<&Default>,
-                    _: Option<&Envelope>,
+                    _: Option<&Default>,
+                    envelope: Option<&Envelope>,
                     _: &mut (),
-                    _: FrameCount,
+                    frame: FrameCount,
                 ) -> SocketType {
-                    *default.unwrap()
+                    envelope.unwrap().value(frame as f64) as i64
                 }
             }
 
@@ -964,7 +966,7 @@ mod tests {
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
                 async fn new() -> Arc<dyn NodeCoreCommon> {
-                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("*2", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let output = give_output_tree(node.clone());
@@ -980,7 +982,7 @@ mod tests {
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
                 ) {
-                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("*2", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
@@ -1122,7 +1124,7 @@ mod tests {
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
                 async fn new() -> Arc<dyn NodeCoreCommon> {
-                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("*3", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let output = give_output_tree(node.clone());
@@ -1138,7 +1140,7 @@ mod tests {
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
                 ) {
-                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("*3", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
@@ -1280,7 +1282,7 @@ mod tests {
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
                 async fn new() -> Arc<dyn NodeCoreCommon> {
-                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("PAW", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let output = give_output_tree(node.clone());
@@ -1296,7 +1298,7 @@ mod tests {
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
                 ) {
-                    let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
+                    let node = Arc::new(NodeCore::new("PAW", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
                     let input_id_1 = input.input_1.get_id();

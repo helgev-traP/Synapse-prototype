@@ -248,6 +248,10 @@ where
             Ok(data) => {
                 if let Some(default_value) = &self.default_value {
                     *default_value.write().await = *data;
+
+                    // clear cache
+                    self.clear_cache().await;
+
                     Ok(())
                 } else {
                     Err(UpdateInputDefaultError::DefaultValueNotEnabled(
@@ -262,6 +266,10 @@ where
     async fn set_envelope(&self, envelope: Envelope) -> Result<(), UpdateInputEnvelopeError> {
         if let Some(envelope_entity) = &self.envelope {
             *envelope_entity.write().await = envelope;
+
+            // clear cache
+            self.clear_cache().await;
+
             Ok(())
         } else {
             Err(UpdateInputEnvelopeError::EnvelopeNotEnabled(envelope))
@@ -295,39 +303,43 @@ where
         std::any::TypeId::of::<Output>()
     }
 
-    fn connect(&self, socket: Weak<dyn OutputTrait>) {
-        tokio::task::block_in_place(|| {
-            *self.upstream_socket.blocking_write() = Some(socket);
-        });
+    async fn connect(&self, socket: Weak<dyn OutputTrait>) {
+        *self.upstream_socket.write().await = Some(socket);
+
+        // clear cache
+        self.clear_cache().await;
     }
 
-    fn disconnect(&self) -> Result<(), NodeDisconnectError> {
-        tokio::task::block_in_place(|| {
-            // make upstream socket disconnect
-            let mut socket_holder = self.upstream_socket.blocking_write();
-            let Some(socket) = socket_holder.as_ref() else {
-                return Err(NodeDisconnectError::NotConnected);
-            };
-            let socket = socket.upgrade().unwrap();
-            if let Err(e) = socket.disconnect(self.id) {
-                if let NodeDisconnectError::NotConnected = e {
-                    println!("NodeDisconnectError: Data inconsistency occurred.");
-                }
+    async fn disconnect(&self) -> Result<(), NodeDisconnectError> {
+        // make upstream socket disconnect
+        let mut socket_holder = self.upstream_socket.write().await;
+        let Some(socket) = socket_holder.as_ref() else {
+            return Err(NodeDisconnectError::NotConnected);
+        };
+        let socket = socket.upgrade().unwrap();
+        if let Err(e) = socket.disconnect(self.id).await {
+            if let NodeDisconnectError::NotConnected = e {
+                println!("NodeDisconnectError: Data inconsistency occurred.");
             }
+        }
 
-            // clear upstream socket
-            *socket_holder = None;
+        // clear upstream socket
+        *socket_holder = None;
 
-            Ok(())
-        })
+        // clear cache
+        self.clear_cache().await;
+
+        Ok(())
     }
 
     /// Disconnect without calling OutputSocket::disconnect.
     /// This is used when OutputSocket::disconnect_all is called.
-    fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError> {
-        tokio::task::block_in_place(|| {
-            *self.upstream_socket.blocking_write() = None;
-        });
+    async fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError> {
+        *self.upstream_socket.blocking_write() = None;
+
+        // clear cache
+        self.clear_cache().await;
+
         Ok(())
     }
 
@@ -365,9 +377,9 @@ pub(crate) trait InputTrait: Send + Sync {
 
     // connect and disconnect
     fn type_id(&self) -> std::any::TypeId;
-    fn connect(&self, socket: Weak<dyn OutputTrait>);
-    fn disconnect(&self) -> Result<(), NodeDisconnectError>;
-    fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError>;
+    async fn connect(&self, socket: Weak<dyn OutputTrait>);
+    async fn disconnect(&self) -> Result<(), NodeDisconnectError>;
+    async fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError>;
 
     // --- use from OutputSocket ---
     async fn clear_cache(&self);

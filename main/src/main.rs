@@ -1,5 +1,8 @@
 extern crate node;
 
-fn main() {
-    println!("Run from main/main.rs");
+#[tokio::main]
+async fn main() {
+    tokio::task::block_in_place(|| {
+        println!("Hello, world!");
+    });
 }

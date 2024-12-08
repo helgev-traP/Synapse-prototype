@@ -22,8 +22,8 @@ pub(crate) async fn connect(
     // ensure the downstream socket is not connected
     let _ = arc_downstream.disconnect();
 
-    arc_upstream.connect(downstream.weak());
-    arc_downstream.connect(upstream.weak());
+    arc_upstream.connect(downstream.weak()).await;
+    arc_downstream.connect(upstream.weak()).await;
 
     Ok(())
 }
@@ -45,8 +45,8 @@ pub(crate) async fn conservative_connect(
         return Err(NodeConnectError::InputNotEmpty);
     }
 
-    arc_upstream.connect(downstream.weak());
-    arc_downstream.connect(upstream.weak());
+    arc_upstream.connect(downstream.weak()).await;
+    arc_downstream.connect(upstream.weak()).await;
 
     Ok(())
 }
