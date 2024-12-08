@@ -4,17 +4,15 @@ use std::{
 };
 use tokio::sync::{RwLock, RwLockReadGuard};
 
+use envelope::Envelope;
+
 use crate::{
-    err::{
-        NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError,
-    },
+    err::{NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError},
     node_core::{NodeCore, NodeCoreCommon},
     socket::output::OutputTrait,
     types::{SharedAny, SocketId},
     FrameCount,
 };
-
-use envelope::Envelope;
 
 /// # ReadFn
 // todo クロージャを宣言するときに無駄な引数を取る必要が無いようにしたい
@@ -64,6 +62,9 @@ where
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
+    // Weak to self
+    weak: Weak<InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>>,
+
     // The fields without interior mutability are only be assigned once
     // in the constructor of Input and never be changed.
     // identifier
@@ -110,8 +111,22 @@ where
         memory: Memory,
         reading_fn: Box<dyn for<'b> ReadingFn<'b, Default, Memory, Output>>,
         frame_select_envelope: Envelope,
-    ) -> Self {
-        InputSocket {
+    ) -> Arc<Self> {
+        // InputSocket(Arc::new(InputSocket {
+        //     id: SocketId::new(),
+        //     name: name.to_string(),
+        //     node,
+        //     default_value_name: default_value_name.to_string(),
+        //     default_value: default_value.map(|data| RwLock::new(data)),
+        //     envelope_name: envelope_name.to_string(),
+        //     envelope: envelope.map(|data| RwLock::new(data)),
+        //     memory: RwLock::new(memory),
+        //     reading_fn,
+        //     frame_select_envelope: RwLock::new(frame_select_envelope),
+        //     upstream_socket: RwLock::new(None),
+        // }))
+        Arc::new_cyclic(|weak| InputSocket {
+            weak: weak.clone(),
             id: SocketId::new(),
             name: name.to_string(),
             node,
@@ -123,7 +138,11 @@ where
             reading_fn,
             frame_select_envelope: RwLock::new(frame_select_envelope),
             upstream_socket: RwLock::new(None),
-        }
+        })
+    }
+
+    pub fn weak(&self) -> WeakInputSocket {
+        WeakInputSocket(self.weak.clone())
     }
 }
 
@@ -142,7 +161,8 @@ where
         match self.upstream_socket.read().await.as_ref() {
             Some(socket) => {
                 // determine frame
-                let frame = self.frame_select_envelope.read().await.value(frame as f64) as FrameCount;
+                let frame =
+                    self.frame_select_envelope.read().await.value(frame as f64) as FrameCount;
 
                 // get data from upstream
                 let data = socket
@@ -180,8 +200,6 @@ where
         }
     }
 }
-
-/// # InputCommon
 
 #[async_trait::async_trait]
 impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputTrait
@@ -344,7 +362,15 @@ pub(crate) trait InputTrait: Send + Sync {
     async fn clear_cache(&self);
 }
 
+pub struct WeakInputSocket(Weak<dyn InputTrait>);
+
+impl WeakInputSocket {
+    pub(crate) fn weak(&self) -> Weak<dyn InputTrait> {
+        self.0.clone()
+    }
+}
+
 #[async_trait::async_trait]
 pub trait InputGroup: Send + 'static {
-    async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>>;
+    async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket>;
 }

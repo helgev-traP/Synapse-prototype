@@ -6,7 +6,7 @@ use std::{
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
-    socket::{InputTrait, OutputTrait},
+    socket::{WeakInputSocket, WeakOutputSocket},
     FrameCount,
 };
 
@@ -171,6 +171,7 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
+            .map(|socket| socket.weak())
         else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
@@ -204,12 +205,13 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
+            .map(|socket| socket.weak())
         else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
 
         // check connection
-        let upstream_socket = upstream_socket.upgrade().unwrap();
+        let upstream_socket = upstream_socket.weak().upgrade().unwrap();
         let downstream_socket = downstream_socket.upgrade().unwrap();
 
         if upstream_socket
@@ -249,12 +251,13 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
+            .map(|socket| socket.weak())
         else {
             return Err(NodeConnectionCheckError::SocketIdNotFound);
         };
 
         // check connection
-        let upstream_socket = upstream_socket.upgrade().unwrap();
+        let upstream_socket = upstream_socket.weak().upgrade().unwrap();
         let downstream_socket = downstream_socket.upgrade().unwrap();
 
         if upstream_socket
@@ -358,11 +361,11 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket> {
         todo!()
     }
 
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket> {
         todo!()
     }
 
@@ -404,10 +407,7 @@ impl FromToBinary for NodeField {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        channel::result_channel_pair,
-        framework::NodeFramework,
-    };
+    use crate::{channel::result_channel_pair, framework::NodeFramework};
 
     use super::*;
 
@@ -773,15 +773,16 @@ mod tests {
 
         pub mod node_a {
             use crate::{
-                field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
             use envelope::Envelope;
-            use std::sync::{Arc, Weak};
+            use std::sync::Arc;
 
             // Types of Node
 
@@ -817,7 +818,7 @@ mod tests {
                     let input_id = input.input_1.get_id();
                     let output = output_1::build(node.clone());
                     let output_id = output.get_id();
-                    let output = OutputTree::Socket(Arc::new(output));
+                    let output = OutputTree::Socket(output.into());
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -848,9 +849,9 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
                     if id == self.input_1.get_id() {
-                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                        Some(self.input_1.weak())
                     } else {
                         None
                     }
@@ -860,15 +861,14 @@ mod tests {
             impl Inputs {
                 fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node.clone());
-                    Self {
-                        input_1: Arc::new(input_1),
-                    }
+                    Self { input_1 }
                 }
             }
 
             // Input Sockets
 
             mod input_1 {
+
                 use super::*;
 
                 // types
@@ -879,7 +879,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -907,7 +907,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(Arc::new(output_1::build(node)))
+                OutputTree::Socket(output_1::build(node).into())
             }
 
             mod output_1 {
@@ -918,7 +918,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
@@ -931,15 +931,16 @@ mod tests {
 
         pub mod node_b {
             use crate::{
-                field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
             use envelope::Envelope;
-            use std::sync::{Arc, Weak};
+            use std::sync::Arc;
 
             // Types of Node
 
@@ -975,7 +976,7 @@ mod tests {
                     let input_id = input.input_1.get_id();
                     let output = output_1::build(node.clone());
                     let output_id = output.get_id();
-                    let output = OutputTree::Socket(Arc::new(output));
+                    let output = OutputTree::Socket(output.into());
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -1006,9 +1007,9 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
                     if id == self.input_1.get_id() {
-                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                        Some(self.input_1.weak())
                     } else {
                         None
                     }
@@ -1018,9 +1019,7 @@ mod tests {
             impl Inputs {
                 fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node.clone());
-                    Self {
-                        input_1: Arc::new(input_1),
-                    }
+                    Self { input_1 }
                 }
             }
 
@@ -1037,7 +1036,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -1065,7 +1064,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(Arc::new(output_1::build(node)))
+                OutputTree::Socket(output_1::build(node).into())
             }
 
             mod output_1 {
@@ -1076,7 +1075,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
@@ -1089,15 +1088,16 @@ mod tests {
 
         pub mod node_c {
             use crate::{
-                field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
             use envelope::Envelope;
-            use std::sync::{Arc, Weak};
+            use std::sync::Arc;
 
             // Types of Node
 
@@ -1133,7 +1133,7 @@ mod tests {
                     let input_id = input.input_1.get_id();
                     let output = output_1::build(node.clone());
                     let output_id = output.get_id();
-                    let output = OutputTree::Socket(Arc::new(output));
+                    let output = OutputTree::Socket(output.into());
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -1164,9 +1164,9 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
                     if id == self.input_1.get_id() {
-                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                        Some(self.input_1.weak())
                     } else {
                         None
                     }
@@ -1176,9 +1176,7 @@ mod tests {
             impl Inputs {
                 fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node.clone());
-                    Self {
-                        input_1: Arc::new(input_1),
-                    }
+                    Self { input_1 }
                 }
             }
 
@@ -1195,7 +1193,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -1223,7 +1221,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(Arc::new(output_1::build(node)))
+                OutputTree::Socket(output_1::build(node).into())
             }
 
             mod output_1 {
@@ -1234,7 +1232,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
@@ -1247,15 +1245,16 @@ mod tests {
 
         pub mod node_d {
             use crate::{
-                field::OutputTrait,
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+                socket::{
+                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree, WeakInputSocket
+                },
                 types::{NodeName, SocketId},
                 FrameCount,
             };
             use envelope::Envelope;
-            use std::sync::{Arc, Weak};
+            use std::sync::Arc;
 
             // Types of Node
 
@@ -1292,7 +1291,7 @@ mod tests {
                     let input_id_2 = input.input_2.get_id();
                     let output = output_1::build(node.clone());
                     let output_id = output.get_id();
-                    let output = OutputTree::Socket(Arc::new(output));
+                    let output = OutputTree::Socket(output.into());
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -1328,11 +1327,11 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
                     if id == self.input_1.get_id() {
-                        Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                        Some(self.input_1.weak())
                     } else if id == self.input_2.get_id() {
-                        Some(Arc::downgrade(&self.input_2) as Weak<dyn InputTrait>)
+                        Some(self.input_2.weak())
                     } else {
                         None
                     }
@@ -1343,10 +1342,7 @@ mod tests {
                 fn new(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node.clone());
                     let input_2 = input_1::build(node.clone());
-                    Self {
-                        input_1: Arc::new(input_1),
-                        input_2: Arc::new(input_2),
-                    }
+                    Self { input_1, input_2 }
                 }
             }
 
@@ -1363,7 +1359,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -1391,7 +1387,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(Arc::new(output_1::build(node)))
+                OutputTree::Socket(output_1::build(node).into())
             }
 
             mod output_1 {
@@ -1402,7 +1398,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Socket {
+                pub fn build(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 

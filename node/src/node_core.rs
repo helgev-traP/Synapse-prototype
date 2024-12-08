@@ -1,11 +1,11 @@
 use std::{
     ops::Index,
-    sync::{Arc, Weak},
+    sync::Arc,
 };
 
-use tokio::sync::{Mutex, MutexGuard, RwLock};
+use tokio::sync::{Mutex, MutexGuard};
 
-use crate::socket::{InputTrait, OutputTrait, OutputTree};
+use crate::socket::{OutputTree, WeakInputSocket, WeakOutputSocket};
 
 use super::{
     channel::{Channel, FrontToNode, NodeToFront},
@@ -233,7 +233,7 @@ where
         self.cache.lock().await.len()
     }
 
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket> {
         self.input
             .lock()
             .await
@@ -243,7 +243,7 @@ where
             .await
     }
 
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket> {
         self.output
             .lock()
             .await
@@ -265,7 +265,7 @@ where
             .await
         {
             Some(socket) => {
-                socket.upgrade().unwrap().set_default_value(default).await?;
+                socket.weak().upgrade().unwrap().set_default_value(default).await?;
                 // clear cache
                 self.cache.lock().await.clear();
                 self.output
@@ -304,8 +304,8 @@ pub trait NodeCoreCommon: Send + Sync {
     async fn cache_depth(&self) -> usize;
     async fn cache_size(&self) -> usize;
     // get input/output socket to: connect, disconnect
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<Weak<dyn InputTrait>>;
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<Weak<dyn OutputTrait>>;
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket>;
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket>;
     // update default value of input
     async fn update_input_default(
         &self,
@@ -424,11 +424,6 @@ impl<T> Cache<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::socket::InputSocket;
-
-    use super::super::types::SharedAny;
-    use envelope::Envelope;
-
     use super::*;
 
     #[test]
@@ -458,30 +453,4 @@ mod tests {
         cache.clear();
         assert_eq!(cache.get_first().is_none(), true);
     }
-
-    fn read(default: &i64, _: &mut (), _: &Envelope, _: FrameCount) -> i64 {
-        *default
-    }
-
-    fn node_process<'a>(
-        input: Arc<tokio::sync::Mutex<dyn InputGroup>>,
-        _: &mut (),
-        frame: FrameCount,
-        _: &NodeId,
-        _: &NodeName,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = i64> + Send + 'a>> {
-        let input = input.clone();
-        Box::pin(async move { todo!() })
-    }
-
-    fn pickup(output: &i64) -> Box<SharedAny> {
-        todo!()
-    }
-
-    fn get_node(name: String, default: i64) -> (SocketId, Box<dyn NodeCoreCommon>, SocketId) {
-        todo!()
-    }
-
-    #[tokio::test]
-    async fn node_core_communicate_test() {}
 }

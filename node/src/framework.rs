@@ -19,12 +19,12 @@ pub mod template {
     use super::NodeFramework;
     use crate::{
         node_core::{NodeCore, NodeCoreCommon},
-        socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree},
+        socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree, WeakInputSocket},
         types::{NodeName, SocketId},
         FrameCount,
     };
     use envelope::Envelope;
-    use std::sync::{Arc, Weak};
+    use std::sync::Arc;
 
     // Types of Node
 
@@ -43,8 +43,8 @@ pub mod template {
             let input = TemplateInput::new(node.clone());
             let output = give_output_tree(node.clone());
 
-            node.set_input(input);
-            node.set_output(output);
+            node.set_input(input).await;
+            node.set_output(output).await;
 
             node
         }
@@ -60,8 +60,8 @@ pub mod template {
             let input = TemplateInput::new(node.clone());
             let output = give_output_tree(node.clone());
 
-            node.set_input(input);
-            node.set_output(output);
+            node.set_input(input).await;
+            node.set_output(output).await;
 
             (node, vec![], vec![])
         }
@@ -92,9 +92,9 @@ pub mod template {
 
     #[async_trait::async_trait]
     impl InputGroup for TemplateInput {
-        async fn get_socket(&self, id: SocketId) -> Option<Weak<dyn InputTrait>> {
+        async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
             if id == self.input_1.get_id() {
-                Some(Arc::downgrade(&self.input_1) as Weak<dyn InputTrait>)
+                Some(self.input_1.weak())
             } else {
                 None
             }
@@ -103,9 +103,8 @@ pub mod template {
 
     impl TemplateInput {
         fn new(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Self {
-            let input_1 = input_1::build(node.clone());
             Self {
-                input_1: Arc::new(input_1),
+                input_1: input_1::build(node.clone()),
             }
         }
     }
@@ -123,7 +122,7 @@ pub mod template {
             InputSocket<Default, Memory, SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
         // build socket
-        pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Socket {
+        pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
             InputSocket::new(
                 "input",
                 node,
@@ -151,7 +150,7 @@ pub mod template {
     // Output
 
     fn give_output_tree(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
-        OutputTree::Socket(Arc::new(output_1::build(node)))
+        OutputTree::Socket(output_1::build(node).into())
     }
 
     mod output_1 {
@@ -162,7 +161,7 @@ pub mod template {
         pub type Socket = OutputSocket<SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
         // build socket
-        pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Socket {
+        pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
             OutputSocket::new("output", Box::new(pickup), node)
         }
 
