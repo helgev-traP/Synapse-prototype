@@ -1,5 +1,5 @@
 {
-  "cSpell.words": ["coms"],
+  "cSpell.words": ["coms", "matcha", "winit"],
   "rust-analyzer.linkedProjects": [
     "./Cargo.toml",
     "./main/Cargo.toml",

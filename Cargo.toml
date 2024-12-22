@@ -1,11 +1,17 @@
 [workspace]
 
-members = ["main", "node", "envelope"]
+members = ["main", "node", "envelope", "matcha"]
 
 [workspace.dependencies]
 node = { path = "node" }
 envelope = { path = "envelope" }
+matcha = { path = "matcha" }
 
-uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
+# runtime
 tokio = { version = "1.38.0", features = ["full"] }
+rayon = "1.10.0"
+pollster = "0.3"
+# async trait
 async-trait = "0.1"
+# other
+uuid = { version = "1.8.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
