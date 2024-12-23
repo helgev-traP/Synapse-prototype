@@ -30,9 +30,6 @@ pub struct NodeField {
     // handle of node execution
     execution_handle: Option<tokio::task::JoinHandle<FrameCount>>,
     execution_stop_channel: Option<std::sync::mpsc::Sender<()>>,
-
-    // channel to front
-    channel_front: tokio::sync::Mutex<FieldChannel>,
 }
 
 impl NodeField {
@@ -43,7 +40,6 @@ impl NodeField {
             nodes: HashMap::new(),
             execution_handle: None,
             execution_stop_channel: None,
-            channel_front: tokio::sync::Mutex::new(channel),
         }
     }
 
@@ -268,7 +264,7 @@ impl NodeField {
         }
     }
 
-    pub async fn node_output_socket_disconnect_all(
+    pub async fn node_disconnect_all_from_output(
         &mut self,
         node_id: NodeId,
         socket_id: SocketId,
@@ -283,7 +279,7 @@ impl NodeField {
         let socket = socket.weak().upgrade().unwrap();
 
         // disconnect all
-        socket.disconnect_all().await
+        socket.disconnect_all_output().await
     }
 
     pub async fn node_disconnect_all(
@@ -295,10 +291,16 @@ impl NodeField {
             return Err(NodeDisconnectError::NodeIdNotFound);
         };
 
-        // disconnect all
+        // disconnect all output
         for socket in node.get_all_output_socket().await {
             let socket = socket.weak().upgrade().unwrap();
-            socket.disconnect_all().await?;
+            socket.disconnect_all_output().await?;
+        }
+
+        // disconnect all input
+        for socket in node.get_all_input_socket().await {
+            let socket = socket.weak().upgrade().unwrap();
+            socket.disconnect().await?;
         }
 
         Ok(())
@@ -396,6 +398,10 @@ impl NodeCoreCommon for NodeField {
     }
 
     async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket> {
+        todo!()
+    }
+
+    async fn get_all_input_socket(&self) -> Vec<WeakInputSocket> {
         todo!()
     }
 
@@ -972,6 +978,10 @@ mod tests {
                         None
                     }
                 }
+
+                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
+                    vec![self.input_1.weak()]
+                }
             }
 
             impl Inputs {
@@ -1131,6 +1141,10 @@ mod tests {
                         None
                     }
                 }
+
+                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
+                    vec![self.input_1.weak()]
+                }
             }
 
             impl Inputs {
@@ -1288,6 +1302,10 @@ mod tests {
                     } else {
                         None
                     }
+                }
+
+                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
+                    vec![self.input_1.weak()]
                 }
             }
 
@@ -1458,6 +1476,10 @@ mod tests {
                     } else {
                         None
                     }
+                }
+
+                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
+                    vec![self.input_1.weak(), self.input_2.weak()]
                 }
             }
 

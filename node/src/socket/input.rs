@@ -396,4 +396,5 @@ impl WeakInputSocket {
 #[async_trait::async_trait]
 pub trait InputGroup: Send + 'static {
     async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket>;
+    fn get_all_socket(&self) -> Vec<WeakInputSocket>;
 }

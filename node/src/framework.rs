@@ -99,6 +99,10 @@ pub mod template {
                 None
             }
         }
+
+        fn get_all_socket(&self) -> Vec<WeakInputSocket> {
+            vec![self.input_1.weak()]
+        }
     }
 
     impl TemplateInput {

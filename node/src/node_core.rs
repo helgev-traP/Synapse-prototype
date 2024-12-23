@@ -264,6 +264,15 @@ where
             .get_all_socket()
     }
 
+    async fn get_all_input_socket(&self) -> Vec<WeakInputSocket> {
+        self.input
+            .lock()
+            .await
+            .as_ref()
+            .expect("input is not set.")
+            .get_all_socket()
+    }
+
     async fn update_input_default(
         &self,
         input_socket_id: SocketId,
@@ -330,6 +339,7 @@ pub trait NodeCoreCommon: Send + Sync {
     async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket>;
     async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket>;
     async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket>;
+    async fn get_all_input_socket(&self) -> Vec<WeakInputSocket>;
     // update default value of input
     async fn update_input_default(
         &self,

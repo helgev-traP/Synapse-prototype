@@ -117,7 +117,7 @@ where
         Ok(())
     }
 
-    async fn disconnect_all(&self) -> Result<(), NodeDisconnectError> {
+    async fn disconnect_all_output(&self) -> Result<(), NodeDisconnectError> {
         // disconnect all downstream nodes
         for socket in self.downstream.lock().await.values() {
             if let Some(socket) = socket.upgrade() {
@@ -162,7 +162,7 @@ pub(crate) trait OutputTrait: Send + Sync {
     fn type_id(&self) -> std::any::TypeId;
     async fn connect(&self, socket: Weak<dyn InputTrait>);
     async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
-    async fn disconnect_all(&self) -> Result<(), NodeDisconnectError>;
+    async fn disconnect_all_output(&self) -> Result<(), NodeDisconnectError>;
 
     // --- use from InputSocket ---
     // called by downstream socket
