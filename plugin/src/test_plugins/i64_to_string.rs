@@ -1,12 +1,11 @@
-
+use envelope::Envelope;
+use node::framework::NodeFramework;
 use node::{
     node_core::{NodeCore, NodeCoreCommon},
     socket::{InputGroup, InputSocket, OutputSocket, OutputTree, WeakInputSocket},
     types::{NodeName, SocketId},
     FrameCount,
 };
-use envelope::Envelope;
-use node::framework::NodeFramework;
 use std::sync::Arc;
 
 // Types of Node
@@ -16,12 +15,20 @@ type NodeOutput = String;
 
 // Node
 
-pub struct CurrentFrameCount;
+pub struct I64ToString;
 
 #[async_trait::async_trait]
-impl NodeFramework for CurrentFrameCount {
+impl NodeFramework for I64ToString {
+    fn name(&self) -> &'static str {
+        "i64 to string"
+    }
+
     async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-        let node = Arc::new(NodeCore::new("current frame count", (), Box::new(node_main_process)));
+        let node = Arc::new(NodeCore::new(
+            "i64 to string",
+            (),
+            Box::new(node_main_process),
+        ));
 
         let input = TemplateInput::new(node.clone());
         let output = give_output_tree(node.clone());
@@ -33,14 +40,12 @@ impl NodeFramework for CurrentFrameCount {
     }
 
     #[cfg(debug_assertions)]
-    async fn build_debug(
-        &self,
-    ) -> (
-        Arc<dyn NodeCoreCommon>,
-        Vec<SocketId>,
-        Vec<SocketId>,
-    ) {
-        let node = Arc::new(NodeCore::new("current frame count debug", (), Box::new(node_main_process)));
+    async fn build_debug(&self) -> (Arc<dyn NodeCoreCommon>, Vec<SocketId>, Vec<SocketId>) {
+        let node = Arc::new(NodeCore::new(
+            "i64 to string debug",
+            (),
+            Box::new(node_main_process),
+        ));
 
         let input = TemplateInput::new(node.clone());
         let output = give_output_tree(node.clone());

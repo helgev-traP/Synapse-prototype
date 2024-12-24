@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 use super::node_core::NodeCoreCommon;
 
 #[async_trait::async_trait]
-pub trait NodeFramework: Send + Sync {
+pub trait NodeFramework: Send + Sync + Any {
+    fn name(&self) -> &'static str;
     async fn build(&self) -> Arc<dyn NodeCoreCommon>;
     #[cfg(debug_assertions)]
     async fn build_debug(
@@ -39,6 +40,10 @@ pub mod template {
 
     #[async_trait::async_trait]
     impl NodeFramework for Builder {
+        fn name(&self) -> &'static str {
+            "Template"
+        }
+
         async fn build(&self) -> Arc<dyn NodeCoreCommon> {
             let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
 

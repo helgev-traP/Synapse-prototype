@@ -27,7 +27,10 @@ fn main() {
     let num_cores = std::thread::available_parallelism().unwrap();
 
     if num_cores.get() < GUI_THREAD * 2 {
-        println!("cpu has less than {} cores is not supported now.", GUI_THREAD * 2);
+        println!(
+            "cpu has less than {} cores is not supported now.",
+            GUI_THREAD * 2
+        );
     }
 
     let backend_thread = num_cores.get() - GUI_THREAD;
@@ -55,9 +58,11 @@ fn main() {
 
     // start frontend with rayon thread pool
     println!("start frontend with {} threads.", frontend_thread);
-    frontend_pool.spawn(move|| {
+    frontend_pool.scope(move |_| {
         app.run();
     });
+
+    println!("program ended.");
 }
 
 fn view<R>(model: &()) -> Box<dyn Dom<R>> {

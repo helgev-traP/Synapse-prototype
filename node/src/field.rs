@@ -932,6 +932,10 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
+                fn name(&self) -> &'static str {
+                    "A"
+                }
+
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("INPUT", (), Box::new(node_main_process)));
 
@@ -1097,6 +1101,10 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
+                fn name(&self) -> &'static str {
+                    "*1"
+                }
+
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("*2", (), Box::new(node_main_process)));
 
@@ -1261,6 +1269,10 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
+                fn name(&self) -> &'static str {
+                    "*3"
+                }
+
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("*3", (), Box::new(node_main_process)));
 
@@ -1425,6 +1437,10 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
+                fn name(&self) -> &'static str {
+                    "PAW"
+                }
+
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("PAW", (), Box::new(node_main_process)));
 

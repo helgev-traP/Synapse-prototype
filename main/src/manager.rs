@@ -26,11 +26,12 @@ impl ProjectManager {
     }
 
     pub fn add_plugin(&mut self, plugin: Box<dyn NodeFramework>) {
-        let plugin_id = plugin.type_id();
+        let plugin_id = (*plugin).type_id();
         if self.plugins.contains_key(&plugin_id) {
             println!("ProjectManager: plugin {:?} already exists", plugin_id);
             return;
         }
+        println!("ProjectManager: add plugin {:?} {}", plugin_id, plugin.name());
         self.plugins.insert(plugin_id, plugin);
     }
 

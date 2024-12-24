@@ -43,5 +43,7 @@ impl<Model: Send + 'static, Message: 'static, MessageToBackend> App<'_, Model, M
         // self.rx.as_ref().unwrap().send(
         //     {some message},
         // ).unwrap();
+
+        
     }
 }

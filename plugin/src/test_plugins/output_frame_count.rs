@@ -20,6 +20,10 @@ pub struct CurrentFrameCount;
 
 #[async_trait::async_trait]
 impl NodeFramework for CurrentFrameCount {
+    fn name(&self) -> &'static str {
+        "current frame count"
+    }
+
     async fn build(&self) -> Arc<dyn NodeCoreCommon> {
         let node = Arc::new(NodeCore::new("current frame count", (), Box::new(node_main_process)));
 
