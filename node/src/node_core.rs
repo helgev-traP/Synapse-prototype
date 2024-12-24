@@ -1,14 +1,10 @@
-use std::{
-    ops::Index,
-    sync::Arc,
-};
+use std::{ops::Index, sync::Arc};
 
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::socket::{OutputTree, WeakInputSocket, WeakOutputSocket};
 
 use super::{
-    channel::{Channel, FrontToNode, NodeToFront},
     err::UpdateInputDefaultError,
     socket::InputGroup,
     types::{NodeId, NodeName, SharedAny, SocketId},
@@ -62,6 +58,8 @@ where
     }
 }
 
+pub struct StopNode;
+
 pub struct NodeCore<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
@@ -81,8 +79,6 @@ where
     cache: Mutex<Cache<ProcessOutput>>,
     // output
     output: Arc<Mutex<Option<OutputTree>>>,
-    // com
-    com_to_frontend: Arc<Mutex<Option<Channel<NodeToFront, FrontToNode>>>>,
 }
 
 /// constructors
@@ -105,7 +101,6 @@ where
             main_process,
             cache: Mutex::new(Cache::new(1)), // キャッシュサイズはNodeFieldにpushする前に統一するので、初期値はなんでもいい
             output: Arc::new(Mutex::new(None)),
-            com_to_frontend: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -161,12 +156,6 @@ where
     Memory: Send + Sync + 'static,
     ProcessOutput: Send + Sync + 'static,
 {
-    // channel to frontend
-    pub async fn set_com_to_frontend(&self, channel: Channel<NodeToFront, FrontToNode>) {
-        let mut com_to_frontend = self.com_to_frontend.lock().await;
-        *com_to_frontend = Some(channel);
-    }
-
     // only for debug build
     #[cfg(debug_assertions)]
     pub async fn debug_get_cache_top(&self) -> Option<Arc<ProcessOutput>> {
@@ -216,7 +205,7 @@ where
         self.cache.lock().await.clear();
 
         // send cache clear to downstream
-        for socket  in self.output.lock().await.as_ref().unwrap().get_all_socket() {
+        for socket in self.output.lock().await.as_ref().unwrap().get_all_socket() {
             socket.weak().upgrade().unwrap().clear_cache().await;
         }
     }
@@ -286,7 +275,12 @@ where
             .await
         {
             Some(socket) => {
-                socket.weak().upgrade().unwrap().set_default_value(default).await?;
+                socket
+                    .weak()
+                    .upgrade()
+                    .unwrap()
+                    .set_default_value(default)
+                    .await?;
                 // clear cache
                 self.cache.lock().await.clear();
                 self.output
@@ -306,7 +300,11 @@ where
         self.call(frame).await
     }
 
-    async fn play(&self, begin_frame: FrameCount, stop_channel: std::sync::mpsc::Receiver<()>) -> FrameCount {
+    async fn play(
+        &self,
+        begin_frame: FrameCount,
+        stop_channel: std::sync::mpsc::Receiver<StopNode>,
+    ) -> FrameCount {
         let mut frame = begin_frame;
         loop {
             // call main process repeatedly
@@ -350,7 +348,11 @@ pub trait NodeCoreCommon: Send + Sync {
     async fn call(&self, frame: FrameCount) -> Arc<SharedAny>;
     // main playing process(play)
     /// This function returns Future to be executed by node field.
-    async fn play(&self, begin_frame: FrameCount, stop_channel: std::sync::mpsc::Receiver<()>) -> FrameCount;
+    async fn play(
+        &self,
+        begin_frame: FrameCount,
+        stop_channel: std::sync::mpsc::Receiver<StopNode>,
+    ) -> FrameCount;
 }
 
 // --- Cache ---

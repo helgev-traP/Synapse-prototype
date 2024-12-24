@@ -1178,7 +1178,9 @@ dependencies = [
 name = "main"
 version = "0.1.0"
 dependencies = [
+ "matcha",
  "node",
+ "plugin",
  "rayon",
  "tokio",
  "uuid",
@@ -1191,6 +1193,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62bb907fe88d54d8d9ce32a3cceab4218ed2f6b7d35617cafe9adf84e43919cb"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "matcha"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.6.0",
+ "bytemuck",
+ "cosmic-text",
+ "image",
+ "nalgebra",
+ "pathfinder_geometry",
+ "pollster",
+ "rayon",
+ "vello",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -1811,6 +1830,15 @@ name = "pkg-config"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
+
+[[package]]
+name = "plugin"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "envelope",
+ "node",
+]
 
 [[package]]
 name = "png"
@@ -2444,23 +2472,6 @@ name = "target-lexicon"
 version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
-
-[[package]]
-name = "tea-ui"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.6.0",
- "bytemuck",
- "cosmic-text",
- "image",
- "nalgebra",
- "pathfinder_geometry",
- "pollster",
- "rayon",
- "vello",
- "wgpu",
- "winit",
-]
 
 [[package]]
 name = "termcolor"

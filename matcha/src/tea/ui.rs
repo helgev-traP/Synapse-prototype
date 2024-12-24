@@ -10,14 +10,14 @@ use super::{
 
 // dom tree node
 
-pub trait Dom<T>: Any + 'static {
+pub trait Dom<T>: Send + Any + 'static {
     fn build_widget_tree(&self) -> Box<dyn Widget<T>>;
     fn as_any(&self) -> &dyn Any;
 }
 
 // render tree node
 
-pub trait Widget<T> {
+pub trait Widget<T>: Send {
     // label
     fn label(&self) -> Option<&str>;
 

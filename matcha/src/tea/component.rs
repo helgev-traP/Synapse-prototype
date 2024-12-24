@@ -21,13 +21,13 @@ impl<Model: Send + 'static, Message, OuterResponse: 'static, InnerResponse: 'sta
     Component<Model, Message, OuterResponse, InnerResponse>
 {
     pub fn new(
-        label: Option<String>,
+        label: Option<&str>,
         model: Model,
         update: fn(&ComponentAccess<Model>, Message),
         view: fn(&Model) -> Box<dyn Dom<InnerResponse>>,
     ) -> Self {
         Self {
-            label,
+            label: label.map(|s| s.to_string()),
             model: Arc::new(Mutex::new(model)),
             model_updated: Arc::new(Mutex::new(true)),
             fn_update: update,
@@ -185,7 +185,7 @@ pub struct ComponentWidget<Model, OuterResponse: 'static, InnerResponse: 'static
     node: Arc<Mutex<Box<dyn Widget<InnerResponse>>>>,
 }
 
-impl<Model, O, I> Widget<O> for ComponentWidget<Model, O, I> {
+impl<Model: Send, O, I> Widget<O> for ComponentWidget<Model, O, I> {
     fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }

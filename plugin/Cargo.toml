@@ -1,0 +1,9 @@
+[package]
+name = "plugin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+node = { workspace = true }
+envelope = { workspace = true }
+async-trait = { workspace = true }

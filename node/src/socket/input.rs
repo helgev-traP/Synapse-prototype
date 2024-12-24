@@ -146,6 +146,113 @@ where
     }
 }
 
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+    InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    Default: Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+    // --- use from NodeField ---
+    // getters
+    pub fn get_id(&self) -> SocketId {
+        self.id
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_default_value_name(&self) -> &str {
+        &self.default_value_name
+    }
+
+    pub fn get_envelope_name(&self) -> &str {
+        &self.envelope_name
+    }
+
+    // get / update default value / envelope
+    pub async fn get_default_value<'b>(&'b self) -> Option<RwLockReadGuard<'b, dyn Any>> {
+        // todo
+        todo!()
+    }
+
+    pub async fn get_envelope<'b>(&'b self) -> Option<RwLockReadGuard<'b, Envelope>> {
+        Some(self.envelope.as_ref()?.read().await)
+    }
+
+    pub async fn set_default_value(
+        &self,
+        default_value: Box<SharedAny>,
+    ) -> Result<(), UpdateInputDefaultError> {
+        match default_value.downcast::<Default>() {
+            Ok(data) => {
+                if let Some(default_value) = &self.default_value {
+                    *default_value.write().await = *data;
+
+                    // clear cache
+                    self.clear_cache().await;
+
+                    Ok(())
+                } else {
+                    Err(UpdateInputDefaultError::DefaultValueNotEnabled(
+                        data as Box<dyn Any + Send + Sync + 'static>,
+                    ))
+                }
+            }
+            Err(e) => Err(UpdateInputDefaultError::TypeRejected(e)),
+        }
+    }
+
+    pub async fn set_envelope(&self, envelope: Envelope) -> Result<(), UpdateInputEnvelopeError> {
+        if let Some(envelope_entity) = &self.envelope {
+            *envelope_entity.write().await = envelope;
+
+            // clear cache
+            self.clear_cache().await;
+
+            Ok(())
+        } else {
+            Err(UpdateInputEnvelopeError::EnvelopeNotEnabled(envelope))
+        }
+    }
+
+    // frame selection envelope
+    pub async fn get_frame_select_envelope<'b>(&'b self) -> RwLockReadGuard<'b, Envelope> {
+        self.frame_select_envelope.read().await
+    }
+
+    pub async fn set_frame_select_envelope(&self, envelope: Envelope) {
+        *self.frame_select_envelope.write().await = envelope;
+    }
+
+    // get upstream socket id
+    pub async fn get_upstream_socket_id(&self) -> Option<SocketId> {
+        Some(
+            self.upstream_socket
+                .read()
+                .await
+                .as_ref()?
+                .upgrade()
+                .unwrap()
+                .get_id(),
+        )
+    }
+
+    // connect and disconnect
+    pub fn type_id(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<Output>()
+    }
+
+    // --- use from OutputSocket ---
+    async fn clear_cache(&self) {
+        self.node.clear_cache().await;
+    }
+}
+
 /// get socket value
 impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
     InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
@@ -215,93 +322,66 @@ where
     // --- use from NodeField ---
     // getters
     fn get_id(&self) -> SocketId {
-        self.id
+        InputSocket::get_id(self)
     }
 
     fn get_name(&self) -> &str {
-        &self.name
+        InputSocket::get_name(self)
     }
 
     fn get_default_value_name(&self) -> &str {
-        &self.default_value_name
+        InputSocket::get_default_value_name(self)
     }
 
     fn get_envelope_name(&self) -> &str {
-        &self.envelope_name
+        InputSocket::get_envelope_name(self)
     }
 
     // get / update default value / envelope
     async fn get_default_value<'b>(&'b self) -> Option<RwLockReadGuard<'b, dyn Any>> {
-        // todo
-        todo!()
+        InputSocket::get_default_value(self).await
     }
 
     async fn get_envelope<'b>(&'b self) -> Option<RwLockReadGuard<'b, Envelope>> {
-        Some(self.envelope.as_ref()?.read().await)
+        InputSocket::get_envelope(self).await
     }
 
     async fn set_default_value(
         &self,
         default_value: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
-        match default_value.downcast::<Default>() {
-            Ok(data) => {
-                if let Some(default_value) = &self.default_value {
-                    *default_value.write().await = *data;
-
-                    // clear cache
-                    self.clear_cache().await;
-
-                    Ok(())
-                } else {
-                    Err(UpdateInputDefaultError::DefaultValueNotEnabled(
-                        data as Box<dyn Any + Send + Sync + 'static>,
-                    ))
-                }
-            }
-            Err(e) => Err(UpdateInputDefaultError::TypeRejected(e)),
-        }
+        InputSocket::set_default_value(self, default_value).await
     }
 
     async fn set_envelope(&self, envelope: Envelope) -> Result<(), UpdateInputEnvelopeError> {
-        if let Some(envelope_entity) = &self.envelope {
-            *envelope_entity.write().await = envelope;
-
-            // clear cache
-            self.clear_cache().await;
-
-            Ok(())
-        } else {
-            Err(UpdateInputEnvelopeError::EnvelopeNotEnabled(envelope))
-        }
+        InputSocket::set_envelope(self, envelope).await
     }
 
     // frame selection envelope
     async fn get_frame_select_envelope<'b>(&'b self) -> RwLockReadGuard<'b, Envelope> {
-        self.frame_select_envelope.read().await
+        InputSocket::get_frame_select_envelope(self).await
     }
 
     async fn set_frame_select_envelope(&self, envelope: Envelope) {
-        *self.frame_select_envelope.write().await = envelope;
+        InputSocket::set_frame_select_envelope(self, envelope).await;
     }
 
     // get upstream socket id
     async fn get_upstream_socket_id(&self) -> Option<SocketId> {
-        Some(
-            self.upstream_socket
-                .read()
-                .await
-                .as_ref()?
-                .upgrade()
-                .unwrap()
-                .get_id(),
-        )
+        InputSocket::get_upstream_socket_id(self).await
+    }
+
+    // --- use from OutputSocket ---
+    async fn clear_cache(&self) {
+        InputSocket::clear_cache(self).await;
     }
 
     // connect and disconnect
     fn type_id(&self) -> std::any::TypeId {
-        std::any::TypeId::of::<Output>()
+        InputSocket::type_id(self)
     }
+
+    // below function is hidden from public
 
     async fn connect(&self, socket: Weak<dyn OutputTrait>) {
         *self.upstream_socket.write().await = Some(socket);
@@ -341,11 +421,6 @@ where
         self.clear_cache().await;
 
         Ok(())
-    }
-
-    // --- use from OutputSocket ---
-    async fn clear_cache(&self) {
-        self.node.clear_cache().await;
     }
 }
 

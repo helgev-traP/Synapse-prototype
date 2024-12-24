@@ -6,5 +6,9 @@ edition = "2021"
 [dependencies]
 tokio = { workspace = true }
 rayon = { workspace = true }
-node = { workspace = true }
 uuid = { workspace = true }
+
+node = { workspace = true }
+plugin = { workspace = true }
+
+matcha = { workspace = true }

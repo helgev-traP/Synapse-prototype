@@ -1,10 +1,11 @@
 [workspace]
 
-members = ["main", "node", "envelope", "matcha"]
+members = ["main", "node", "envelope", "matcha", "plugin"]
 
 [workspace.dependencies]
 node = { path = "node" }
 envelope = { path = "envelope" }
+plugin = { path = "plugin" }
 matcha = { path = "matcha" }
 
 # runtime

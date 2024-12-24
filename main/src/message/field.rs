@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{any::TypeId, collections::HashSet};
 
 use node::{
     types::{NodeId, PluginId, SharedAny, SocketId},
@@ -6,15 +6,15 @@ use node::{
 };
 
 pub enum FieldReq {
-    Id(NodeId),
-    Name(String),
+    Id,
+    Name,
     AllNodes(Vec<NodeId>),
     CacheDepth { node: NodeId },
 }
 
 pub enum FieldOp {
     // field operation
-    AddNode(PluginId),
+    AddNode(TypeId),
     RemoveNode(NodeId),
     Connect {
         upstream_node: NodeId,

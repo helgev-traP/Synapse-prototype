@@ -1,17 +1,17 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Weak},
+    sync::Arc,
 };
 
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
+    node_core::StopNode,
     socket::{WeakInputSocket, WeakOutputSocket},
     FrameCount,
 };
 
 use super::{
-    channel::FieldChannel,
     err::{
         NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
     },
@@ -29,14 +29,14 @@ pub struct NodeField {
 
     // handle of node execution
     execution_handle: Option<tokio::task::JoinHandle<FrameCount>>,
-    execution_stop_channel: Option<std::sync::mpsc::Sender<()>>,
+    execution_stop_channel: Option<std::sync::mpsc::Sender<StopNode>>,
 }
 
 impl NodeField {
-    pub fn new(name: String, channel: FieldChannel) -> Self {
+    pub fn new(name: &str) -> Self {
         NodeField {
             node_id: NodeId::new(),
-            node_name: Mutex::new(name),
+            node_name: Mutex::new(name.to_string()),
             nodes: HashMap::new(),
             execution_handle: None,
             execution_stop_channel: None,
@@ -284,10 +284,10 @@ impl NodeField {
 
     pub async fn node_disconnect_all(
         &mut self,
-        node_id: &NodeId,
+        node_id: NodeId,
     ) -> Result<(), NodeDisconnectError> {
         // get node
-        let Some(node) = self.nodes.get(node_id) else {
+        let Some(node) = self.nodes.get(&node_id) else {
             return Err(NodeDisconnectError::NodeIdNotFound);
         };
 
@@ -307,7 +307,7 @@ impl NodeField {
     }
 
     // update input default of node
-    pub async fn update_input_default(
+    pub async fn node_update_input_default(
         &self,
         node_id: NodeId,
         input_socket_id: SocketId,
@@ -322,11 +322,11 @@ impl NodeField {
 
     // main process
 
-    pub async fn field_call(&self, frame: FrameCount, node_id: NodeId) -> Option<Arc<SharedAny>> {
+    pub async fn field_call(&self, frame: FrameCount, node_id: NodeId) -> Result<Arc<SharedAny>, ()> {
         if let Some(node) = self.nodes.get(&node_id) {
-            Some(node.call(frame).await)
+            Ok(node.call(frame).await)
         } else {
-            None
+            Err(())
         }
     }
 
@@ -347,9 +347,13 @@ impl NodeField {
         }
     }
 
+    pub fn field_is_playing(&self) -> bool {
+        self.execution_handle.is_some()
+    }
+
     pub async fn field_stop(&mut self) -> FrameCount {
         if let Some(tx) = self.execution_stop_channel.take() {
-            tx.send(()).unwrap();
+            tx.send(StopNode).unwrap();
         }
 
         let frame = self.execution_handle.take().unwrap().await.unwrap();
@@ -420,7 +424,7 @@ impl NodeCoreCommon for NodeField {
     async fn play(
         &self,
         frame: FrameCount,
-        stop_channel: std::sync::mpsc::Receiver<()>,
+        stop_channel: std::sync::mpsc::Receiver<StopNode>,
     ) -> FrameCount {
         todo!()
     }
@@ -459,16 +463,19 @@ mod tests {
     #[tokio::test]
     async fn comprehensive_test() {
         // create field
-        let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
+        let mut field = NodeField::new("field");
 
         // create nodes
-        let (node_a, node_a_input_id, node_a_output_id) = nodes::node_a::Builder::new_debug().await;
+        let (node_a, node_a_input_id, node_a_output_id) =
+            nodes::node_a::Builder {}.build_debug().await;
         let node_a_id = node_a.get_id();
-        let (node_b, node_b_input_id, node_b_output_id) = nodes::node_b::Builder::new_debug().await;
+        let (node_b, node_b_input_id, node_b_output_id) =
+            nodes::node_b::Builder {}.build_debug().await;
         let node_b_id = node_b.get_id();
-        let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
+        let (node_c, node_c_input_id, node_c_output_id) =
+            nodes::node_c::Builder {}.build_debug().await;
         let node_c_id = node_c.get_id();
-        let (node_d, node_d_input_id, _) = nodes::node_d::Builder::new_debug().await;
+        let (node_d, node_d_input_id, _) = nodes::node_d::Builder {}.build_debug().await;
         let node_d_id = node_d.get_id();
 
         // add nodes to field
@@ -517,19 +524,19 @@ mod tests {
         //     .await
         //     .unwrap();
         field
-            .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
             .await
             .unwrap();
 
@@ -689,16 +696,20 @@ mod tests {
     #[tokio::test]
     async fn measure_transfer_overhead() {
         // create field
-        let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
+        let mut field = NodeField::new("field");
 
         // create nodes
-        let (node_a, node_a_input_id, node_a_output_id) = nodes::node_a::Builder::new_debug().await;
+        let (node_a, node_a_input_id, node_a_output_id) =
+            nodes::node_a::Builder {}.build_debug().await;
         let node_a_id = node_a.get_id();
-        let (node_b, node_b_input_id, node_b_output_id) = nodes::node_b::Builder::new_debug().await;
+        let (node_b, node_b_input_id, node_b_output_id) =
+            nodes::node_b::Builder {}.build_debug().await;
         let node_b_id = node_b.get_id();
-        let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
+        let (node_c, node_c_input_id, node_c_output_id) =
+            nodes::node_c::Builder {}.build_debug().await;
         let node_c_id = node_c.get_id();
-        let (node_d, node_d_input_id, node_d_output_id) = nodes::node_d::Builder::new_debug().await;
+        let (node_d, node_d_input_id, node_d_output_id) =
+            nodes::node_d::Builder {}.build_debug().await;
         let node_d_id = node_d.get_id();
 
         // add nodes to field
@@ -709,19 +720,19 @@ mod tests {
 
         // change default value
         field
-            .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
             .await
             .unwrap();
 
@@ -786,16 +797,20 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 20)]
     async fn node_execution_test() {
         // create field
-        let mut field = NodeField::new("field".to_string(), result_channel_pair(1).0);
+        let mut field = NodeField::new("field");
 
         // create nodes
-        let (node_a, node_a_input_id, node_a_output_id) = nodes::node_a::Builder::new_debug().await;
+        let (node_a, node_a_input_id, node_a_output_id) =
+            nodes::node_a::Builder {}.build_debug().await;
         let node_a_id = node_a.get_id();
-        let (node_b, node_b_input_id, node_b_output_id) = nodes::node_b::Builder::new_debug().await;
+        let (node_b, node_b_input_id, node_b_output_id) =
+            nodes::node_b::Builder {}.build_debug().await;
         let node_b_id = node_b.get_id();
-        let (node_c, node_c_input_id, node_c_output_id) = nodes::node_c::Builder::new_debug().await;
+        let (node_c, node_c_input_id, node_c_output_id) =
+            nodes::node_c::Builder {}.build_debug().await;
         let node_c_id = node_c.get_id();
-        let (node_d, node_d_input_id, node_d_output_id) = nodes::node_d::Builder::new_debug().await;
+        let (node_d, node_d_input_id, node_d_output_id) =
+            nodes::node_d::Builder {}.build_debug().await;
         let node_d_id = node_d.get_id();
 
         // add nodes to field
@@ -806,19 +821,19 @@ mod tests {
 
         // change default value
         field
-            .update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
             .await
             .unwrap();
         field
-            .update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
             .await
             .unwrap();
 
@@ -917,7 +932,7 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
-                async fn new() -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("INPUT", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
@@ -929,7 +944,9 @@ mod tests {
                     node
                 }
 
-                async fn new_debug() -> (
+                async fn build_debug(
+                    &self,
+                ) -> (
                     Arc<dyn NodeCoreCommon>,
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
@@ -948,7 +965,7 @@ mod tests {
                     (node, vec![input_id], vec![output_id])
                 }
 
-                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
                     todo!()
                 }
             }
@@ -1080,7 +1097,7 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
-                async fn new() -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("*2", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
@@ -1092,7 +1109,9 @@ mod tests {
                     node
                 }
 
-                async fn new_debug() -> (
+                async fn build_debug(
+                    &self,
+                ) -> (
                     Arc<dyn NodeCoreCommon>,
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
@@ -1111,7 +1130,7 @@ mod tests {
                     (node, vec![input_id], vec![output_id])
                 }
 
-                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
                     todo!()
                 }
             }
@@ -1242,7 +1261,7 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
-                async fn new() -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("*3", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
@@ -1254,7 +1273,9 @@ mod tests {
                     node
                 }
 
-                async fn new_debug() -> (
+                async fn build_debug(
+                    &self,
+                ) -> (
                     Arc<dyn NodeCoreCommon>,
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
@@ -1273,7 +1294,7 @@ mod tests {
                     (node, vec![input_id], vec![output_id])
                 }
 
-                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
                     todo!()
                 }
             }
@@ -1404,7 +1425,7 @@ mod tests {
 
             #[async_trait::async_trait]
             impl NodeFramework for Builder {
-                async fn new() -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
                     let node = Arc::new(NodeCore::new("PAW", (), Box::new(node_main_process)));
 
                     let input = Inputs::new(node.clone());
@@ -1416,7 +1437,9 @@ mod tests {
                     node
                 }
 
-                async fn new_debug() -> (
+                async fn build_debug(
+                    &self,
+                ) -> (
                     Arc<dyn NodeCoreCommon>,
                     Vec<crate::types::SocketId>,
                     Vec<crate::types::SocketId>,
@@ -1436,7 +1459,7 @@ mod tests {
                     (node, vec![input_id_1, input_id_2], vec![output_id])
                 }
 
-                async fn build_from_binary(_: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
                     todo!()
                 }
             }

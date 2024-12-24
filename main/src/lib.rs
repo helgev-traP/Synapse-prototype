@@ -1,5 +1,5 @@
-mod front;
-mod manager;
-mod renderer;
+pub mod front;
+pub mod manager;
+pub mod renderer;
 
-mod message;
+pub mod message;

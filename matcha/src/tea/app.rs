@@ -1,17 +1,19 @@
 use super::{component::Component, types::color::Color, window::Window};
 
-pub struct App<'a, Model: Send + 'static, Message: 'static> {
+pub struct App<'a, Model: Send + 'static, Message: 'static, MessageToBackend: 'static> {
     window: Window<'a, Model, Message>,
 
     // dummy field to store channel
-    rx: Option<std::sync::channel::Receiver<Message>>,
-    tx: Option<std::sync::mpsc::Sender<Message>>,
+    rx: Option<std::sync::mpsc::Receiver<Message>>,
+    tx: Option<std::sync::mpsc::Sender<MessageToBackend>>,
 }
 
-impl<Model: Send + 'static, Message: 'static> App<'_, Model, Message> {
+impl<Model: Send + 'static, Message: 'static, MessageToBackend> App<'_, Model, Message, MessageToBackend> {
     pub fn new(component: Component<Model, Message, Message, Message>) -> Self {
         Self {
             window: Window::new(component),
+            rx: None,
+            tx: None,
         }
     }
 
@@ -25,8 +27,9 @@ impl<Model: Send + 'static, Message: 'static> App<'_, Model, Message> {
         self
     }
 
-    pub fn communicate(mut self, rx: std::sync::channel::Receiver<Message>, tx: std::sync::mpsc::Sender<Message>) -> Self {
-        self
+    pub fn communicate(mut self, tx: std::sync::mpsc::Sender<MessageToBackend>, rx: std::sync::mpsc::Receiver<Message>) -> Self {
+        self.rx = Some(rx);
+        self.tx = Some(tx);
         self
     }
 

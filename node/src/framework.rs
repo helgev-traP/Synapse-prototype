@@ -3,15 +3,17 @@ use std::sync::Arc;
 use super::node_core::NodeCoreCommon;
 
 #[async_trait::async_trait]
-pub trait NodeFramework {
-    async fn new() -> Arc<dyn NodeCoreCommon>;
+pub trait NodeFramework: Send + Sync {
+    async fn build(&self) -> Arc<dyn NodeCoreCommon>;
     #[cfg(debug_assertions)]
-    async fn new_debug() -> (
+    async fn build_debug(
+        &self,
+    ) -> (
         Arc<dyn NodeCoreCommon>,
         Vec<crate::types::SocketId>,
         Vec<crate::types::SocketId>,
     );
-    async fn build_from_binary(binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]);
+    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]);
 }
 
 #[cfg(test)]
@@ -19,7 +21,7 @@ pub mod template {
     use super::NodeFramework;
     use crate::{
         node_core::{NodeCore, NodeCoreCommon},
-        socket::{InputGroup, InputSocket, InputTrait, OutputSocket, OutputTree, WeakInputSocket},
+        socket::{InputGroup, InputSocket, OutputSocket, OutputTree, WeakInputSocket},
         types::{NodeName, SocketId},
         FrameCount,
     };
@@ -37,7 +39,7 @@ pub mod template {
 
     #[async_trait::async_trait]
     impl NodeFramework for Builder {
-        async fn new() -> Arc<dyn NodeCoreCommon> {
+        async fn build(&self) -> Arc<dyn NodeCoreCommon> {
             let node = Arc::new(NodeCore::new("Template", (), Box::new(node_main_process)));
 
             let input = TemplateInput::new(node.clone());
@@ -50,7 +52,9 @@ pub mod template {
         }
 
         #[cfg(debug_assertions)]
-        async fn new_debug() -> (
+        async fn build_debug(
+            &self,
+        ) -> (
             Arc<dyn NodeCoreCommon>,
             Vec<crate::types::SocketId>,
             Vec<crate::types::SocketId>,
@@ -66,7 +70,7 @@ pub mod template {
             (node, vec![], vec![])
         }
 
-        async fn build_from_binary(binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+        async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
             todo!()
         }
     }

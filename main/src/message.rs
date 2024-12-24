@@ -1,10 +1,11 @@
-use node::types::PluginId;
+use std::any::TypeId;
 
 pub mod field;
 
 pub enum MessageToBackend {
     // manager
-    AllPlugins(PluginId),
+    AllPlugins(TypeId),
+    Shutdown,
     // field
     FieldReq(field::FieldReq),
     FieldOp(field::FieldOp),
