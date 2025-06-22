@@ -7,7 +7,7 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
     node_core::StopNode,
-    socket::{WeakInputSocket, WeakOutputSocket},
+    socket::{InputSocketCapsule, OutputSocketCapsule},
     FrameCount,
 };
 
@@ -164,13 +164,12 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
-            .map(|socket| socket.weak())
         else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
 
         // disconnect
-        downstream_socket.upgrade().unwrap().disconnect().await
+        downstream_socket.disconnect().await
     }
 
     pub async fn node_conservative_disconnect(
@@ -198,22 +197,20 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
-            .map(|socket| socket.weak())
         else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
 
         // check connection
-        let upstream_socket = upstream_socket.weak().upgrade().unwrap();
-        let downstream_socket = downstream_socket.upgrade().unwrap();
-
         if upstream_socket
-            .get_downstream_ids()
+            .downstream_ids()
             .await
-            .contains(&downstream_socket.get_id())
+            .contains(&downstream_socket.socket_id())
         {
             // disconnect
-            upstream_socket.disconnect(downstream_socket.get_id()).await
+            upstream_socket
+                .disconnect(downstream_socket.socket_id())
+                .await
         } else {
             Err(NodeDisconnectError::NotConnected)
         }
@@ -244,19 +241,15 @@ impl NodeField {
         let Some(downstream_socket) = downstream_node
             .get_input_socket(downstream_node_socket_id)
             .await
-            .map(|socket| socket.weak())
         else {
             return Err(NodeConnectionCheckError::SocketIdNotFound);
         };
 
         // check connection
-        let upstream_socket = upstream_socket.weak().upgrade().unwrap();
-        let downstream_socket = downstream_socket.upgrade().unwrap();
-
         if upstream_socket
-            .get_downstream_ids()
+            .downstream_ids()
             .await
-            .contains(&downstream_socket.get_id())
+            .contains(&downstream_socket.socket_id())
         {
             Ok(())
         } else {
@@ -276,7 +269,6 @@ impl NodeField {
         let Some(socket) = node.get_output_socket(socket_id).await else {
             return Err(NodeDisconnectError::SocketIdNotFound);
         };
-        let socket = socket.weak().upgrade().unwrap();
 
         // disconnect all
         socket.disconnect_all_output().await
@@ -293,13 +285,11 @@ impl NodeField {
 
         // disconnect all output
         for socket in node.get_all_output_socket().await {
-            let socket = socket.weak().upgrade().unwrap();
             socket.disconnect_all_output().await?;
         }
 
         // disconnect all input
         for socket in node.get_all_input_socket().await {
-            let socket = socket.weak().upgrade().unwrap();
             socket.disconnect().await?;
         }
 
@@ -322,7 +312,11 @@ impl NodeField {
 
     // main process
 
-    pub async fn field_call(&self, frame: FrameCount, node_id: NodeId) -> Result<Arc<SharedAny>, ()> {
+    pub async fn field_call(
+        &self,
+        frame: FrameCount,
+        node_id: NodeId,
+    ) -> Result<Arc<SharedAny>, ()> {
         if let Some(node) = self.nodes.get(&node_id) {
             Ok(node.call(frame).await)
         } else {
@@ -393,19 +387,19 @@ impl NodeCoreCommon for NodeField {
         todo!()
     }
 
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<InputSocketCapsule> {
         todo!()
     }
 
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<OutputSocketCapsule> {
         todo!()
     }
 
-    async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket> {
+    async fn get_all_output_socket(&self) -> Vec<OutputSocketCapsule> {
         todo!()
     }
 
-    async fn get_all_input_socket(&self) -> Vec<WeakInputSocket> {
+    async fn get_all_input_socket(&self) -> Vec<InputSocketCapsule> {
         todo!()
     }
 
@@ -912,8 +906,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
-                    WeakInputSocket,
+                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
+                    OutputTree,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -960,8 +954,8 @@ mod tests {
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
                     let output = output_1::build(node.clone());
-                    let output_id = output.get_id();
-                    let output = OutputTree::Socket(output.into());
+                    let output_id = output.socket_id();
+                    let output = OutputTree::Socket(output);
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -992,16 +986,16 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
+                async fn get_socket(&self, id: SocketId) -> Option<InputSocketCapsule> {
                     if id == self.input_1.get_id() {
-                        Some(self.input_1.weak())
+                        Some(self.input_1.make_capsule())
                     } else {
                         None
                     }
                 }
 
-                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
-                    vec![self.input_1.weak()]
+                fn get_all_socket(&self) -> Vec<InputSocketCapsule> {
+                    vec![self.input_1.make_capsule()]
                 }
             }
 
@@ -1036,7 +1030,7 @@ mod tests {
                         Some(Envelope::new_pass_through()),
                         (),
                         Box::new(read),
-                        Envelope::new_pass_through(),
+                        Some(Envelope::new_pass_through()),
                     )
                 }
 
@@ -1054,7 +1048,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node).into())
+                OutputTree::Socket(output_1::build(node))
             }
 
             mod output_1 {
@@ -1081,8 +1075,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
-                    WeakInputSocket,
+                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
+                    OutputTree,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1129,8 +1123,8 @@ mod tests {
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
                     let output = output_1::build(node.clone());
-                    let output_id = output.get_id();
-                    let output = OutputTree::Socket(output.into());
+                    let output_id = output.socket_id();
+                    let output = OutputTree::Socket(output);
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -1161,16 +1155,16 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
+                async fn get_socket(&self, id: SocketId) -> Option<InputSocketCapsule> {
                     if id == self.input_1.get_id() {
-                        Some(self.input_1.weak())
+                        Some(self.input_1.make_capsule())
                     } else {
                         None
                     }
                 }
 
-                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
-                    vec![self.input_1.weak()]
+                fn get_all_socket(&self) -> Vec<InputSocketCapsule> {
+                    vec![self.input_1.make_capsule()]
                 }
             }
 
@@ -1204,7 +1198,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new_pass_through(),
+                        Some(Envelope::new_pass_through()),
                     )
                 }
 
@@ -1222,7 +1216,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node).into())
+                OutputTree::Socket(output_1::build(node))
             }
 
             mod output_1 {
@@ -1249,8 +1243,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
-                    WeakInputSocket,
+                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
+                    OutputTree,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1297,8 +1291,8 @@ mod tests {
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
                     let output = output_1::build(node.clone());
-                    let output_id = output.get_id();
-                    let output = OutputTree::Socket(output.into());
+                    let output_id = output.socket_id();
+                    let output = OutputTree::Socket(output);
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -1329,16 +1323,16 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
+                async fn get_socket(&self, id: SocketId) -> Option<InputSocketCapsule> {
                     if id == self.input_1.get_id() {
-                        Some(self.input_1.weak())
+                        Some(self.input_1.make_capsule())
                     } else {
                         None
                     }
                 }
 
-                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
-                    vec![self.input_1.weak()]
+                fn get_all_socket(&self) -> Vec<InputSocketCapsule> {
+                    vec![self.input_1.make_capsule()]
                 }
             }
 
@@ -1372,7 +1366,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new_pass_through(),
+                        Some(Envelope::new_pass_through()),
                     )
                 }
 
@@ -1390,7 +1384,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node).into())
+                OutputTree::Socket(output_1::build(node))
             }
 
             mod output_1 {
@@ -1417,8 +1411,8 @@ mod tests {
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{
-                    InputGroup, InputSocket, InputTrait, OutputSocket, OutputTrait, OutputTree,
-                    WeakInputSocket,
+                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
+                    OutputTree,
                 },
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1466,8 +1460,8 @@ mod tests {
                     let input_id_1 = input.input_1.get_id();
                     let input_id_2 = input.input_2.get_id();
                     let output = output_1::build(node.clone());
-                    let output_id = output.get_id();
-                    let output = OutputTree::Socket(output.into());
+                    let output_id = output.socket_id();
+                    let output = OutputTree::Socket(output);
 
                     node.set_input(input).await;
                     node.set_output(output).await;
@@ -1507,18 +1501,18 @@ mod tests {
 
             #[async_trait::async_trait]
             impl InputGroup for Inputs {
-                async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
+                async fn get_socket(&self, id: SocketId) -> Option<InputSocketCapsule> {
                     if id == self.input_1.get_id() {
-                        Some(self.input_1.weak())
+                        Some(self.input_1.make_capsule())
                     } else if id == self.input_2.get_id() {
-                        Some(self.input_2.weak())
+                        Some(self.input_2.make_capsule())
                     } else {
                         None
                     }
                 }
 
-                fn get_all_socket(&self) -> Vec<WeakInputSocket> {
-                    vec![self.input_1.weak(), self.input_2.weak()]
+                fn get_all_socket(&self) -> Vec<InputSocketCapsule> {
+                    vec![self.input_1.make_capsule(), self.input_2.make_capsule()]
                 }
             }
 
@@ -1553,7 +1547,7 @@ mod tests {
                         None,
                         (),
                         Box::new(read),
-                        Envelope::new_pass_through(),
+                        Some(Envelope::new_pass_through()),
                     )
                 }
 
@@ -1571,7 +1565,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node).into())
+                OutputTree::Socket(output_1::build(node))
             }
 
             mod output_1 {

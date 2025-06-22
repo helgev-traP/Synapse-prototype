@@ -2,7 +2,7 @@ use std::{ops::Index, sync::Arc};
 
 use tokio::sync::{Mutex, MutexGuard};
 
-use crate::socket::{OutputTree, WeakInputSocket, WeakOutputSocket};
+use crate::socket::{InputSocketCapsule, OutputSocketCapsule, OutputTree};
 
 use super::{
     err::UpdateInputDefaultError,
@@ -206,7 +206,7 @@ where
 
         // send cache clear to downstream
         for socket in self.output.lock().await.as_ref().unwrap().get_all_socket() {
-            socket.weak().upgrade().unwrap().clear_cache().await;
+            socket.clear_cache().await;
         }
     }
 
@@ -225,7 +225,7 @@ where
         self.cache.lock().await.len()
     }
 
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket> {
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<InputSocketCapsule> {
         self.input
             .lock()
             .await
@@ -235,7 +235,7 @@ where
             .await
     }
 
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket> {
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<OutputSocketCapsule> {
         self.output
             .lock()
             .await
@@ -244,7 +244,7 @@ where
             .get_socket(socket_id)
     }
 
-    async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket> {
+    async fn get_all_output_socket(&self) -> Vec<OutputSocketCapsule> {
         self.output
             .lock()
             .await
@@ -253,7 +253,7 @@ where
             .get_all_socket()
     }
 
-    async fn get_all_input_socket(&self) -> Vec<WeakInputSocket> {
+    async fn get_all_input_socket(&self) -> Vec<InputSocketCapsule> {
         self.input
             .lock()
             .await
@@ -276,9 +276,6 @@ where
         {
             Some(socket) => {
                 socket
-                    .weak()
-                    .upgrade()
-                    .unwrap()
                     .set_default_value(default)
                     .await?;
                 // clear cache
@@ -334,10 +331,10 @@ pub trait NodeCoreCommon: Send + Sync {
     async fn cache_depth(&self) -> usize;
     async fn cache_size(&self) -> usize;
     // get input/output socket to: connect, disconnect
-    async fn get_input_socket(&self, socket_id: SocketId) -> Option<WeakInputSocket>;
-    async fn get_output_socket(&self, socket_id: SocketId) -> Option<WeakOutputSocket>;
-    async fn get_all_output_socket(&self) -> Vec<WeakOutputSocket>;
-    async fn get_all_input_socket(&self) -> Vec<WeakInputSocket>;
+    async fn get_input_socket(&self, socket_id: SocketId) -> Option<InputSocketCapsule>;
+    async fn get_output_socket(&self, socket_id: SocketId) -> Option<OutputSocketCapsule>;
+    async fn get_all_output_socket(&self) -> Vec<OutputSocketCapsule>;
+    async fn get_all_input_socket(&self) -> Vec<InputSocketCapsule>;
     // update default value of input
     async fn update_input_default(
         &self,

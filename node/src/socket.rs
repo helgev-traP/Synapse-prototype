@@ -1,52 +1,45 @@
-mod input;
+pub mod input;
 pub use input::*;
-mod output;
+pub mod output;
 pub use output::*;
 
 use crate::err::NodeConnectError;
 
 /// connect two sockets
-
 pub(crate) async fn connect(
-    upstream: WeakOutputSocket,
-    downstream: WeakInputSocket,
+    upstream: OutputSocketCapsule,
+    downstream: InputSocketCapsule,
 ) -> Result<(), NodeConnectError> {
-    let arc_upstream = upstream.weak().upgrade().unwrap();
-    let arc_downstream = downstream.weak().upgrade().unwrap();
-
     // check socket type
-    if arc_upstream.type_id() != arc_downstream.type_id() {
+    if upstream.socket_type() != downstream.socket_type() {
         return Err(NodeConnectError::TypeRejected);
     }
 
     // ensure the downstream socket is not connected
-    let _ = arc_downstream.disconnect();
+    let _ = downstream.disconnect();
 
-    arc_upstream.connect(downstream.weak()).await;
-    arc_downstream.connect(upstream.weak()).await;
+    upstream.connect(downstream.clone()).await;
+    downstream.connect(upstream).await;
 
     Ok(())
 }
 
 pub(crate) async fn conservative_connect(
-    upstream: WeakOutputSocket,
-    downstream: WeakInputSocket,
+    upstream: OutputSocketCapsule,
+    downstream: InputSocketCapsule,
 ) -> Result<(), NodeConnectError> {
-    let arc_upstream = upstream.weak().upgrade().unwrap();
-    let arc_downstream = downstream.weak().upgrade().unwrap();
-
     // check socket type
-    if arc_upstream.type_id() != arc_downstream.type_id() {
+    if upstream.socket_type() != downstream.socket_type() {
         return Err(NodeConnectError::TypeRejected);
     }
 
     // check the downstream socket is not connected
-    if arc_downstream.get_upstream_socket_id().await.is_some() {
+    if downstream.upstream_socket_id().await.is_some() {
         return Err(NodeConnectError::InputNotEmpty);
     }
 
-    arc_upstream.connect(downstream.weak()).await;
-    arc_downstream.connect(upstream.weak()).await;
+    upstream.connect(downstream.clone()).await;
+    downstream.connect(upstream).await;
 
     Ok(())
 }
