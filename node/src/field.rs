@@ -46,7 +46,7 @@ impl NodeField {
     // field operations
 
     pub fn add_node(&mut self, node: Arc<dyn NodeCoreCommon>) {
-        self.nodes.insert(node.get_id().clone(), node);
+        self.nodes.insert(node.get_id(), node);
     }
 
     pub fn remove_node(&mut self, node_id: &NodeId) {
@@ -66,19 +66,19 @@ impl NodeField {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     pub async fn ensure_consistency(&mut self) {
         let mut ids = HashSet::new();
         for (id, node) in self.nodes.iter() {
             if *id != node.get_id() {
-                ids.insert(id.clone());
+                ids.insert(*id);
             }
         }
         for id in ids {
             let node = self.nodes.remove(&id).unwrap();
-            let id = node.get_id().clone();
+            let id = node.get_id();
             self.nodes.insert(id, node);
         }
     }
@@ -479,38 +479,14 @@ mod tests {
         field.add_node(node_d);
 
         // check output
-        assert_eq!(
-            field
-                .field_call(0, node_a_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&0)
-        );
-        assert_eq!(
-            field
-                .field_call(0, node_b_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&0)
-        );
-        assert_eq!(
-            field
-                .field_call(0, node_c_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&0)
-        );
-        assert_eq!(
-            field
-                .field_call(0, node_d_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&1)
-        );
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
 
         // change default value
         // field
@@ -518,55 +494,31 @@ mod tests {
         //     .await
         //     .unwrap();
         field
-            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1i64))
             .await
             .unwrap();
 
         // check output
-        assert_eq!(
-            field
-                .field_call(0, node_a_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&0)
-        );
-        assert_eq!(
-            field
-                .field_call(0, node_b_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&2)
-        );
-        assert_eq!(
-            field
-                .field_call(0, node_c_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&3)
-        );
-        assert_eq!(
-            field
-                .field_call(0, node_d_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&1)
-        );
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(0, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
 
         // connect nodes
         field
@@ -607,38 +559,14 @@ mod tests {
             .unwrap();
 
         // check output
-        assert_eq!(
-            field
-                .field_call(1, node_a_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&1)
-        );
-        assert_eq!(
-            field
-                .field_call(1, node_b_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&2)
-        );
-        assert_eq!(
-            field
-                .field_call(1, node_c_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&3)
-        );
-        assert_eq!(
-            field
-                .field_call(1, node_d_id)
-                .await
-                .unwrap()
-                .downcast_ref::<i64>(),
-            Some(&8)
-        );
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(1, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(1, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(1, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
+        #[rustfmt::skip]
+        assert_eq!(field.field_call(1, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&8));
 
         // check connection
         assert_eq!(
@@ -714,19 +642,19 @@ mod tests {
 
         // change default value
         field
-            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1i64))
             .await
             .unwrap();
 
@@ -815,19 +743,19 @@ mod tests {
 
         // change default value
         field
-            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1i64))
             .await
             .unwrap();
         field
-            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1 as i64))
+            .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1i64))
             .await
             .unwrap();
 
@@ -905,10 +833,7 @@ mod tests {
             use crate::{
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{
-                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
-                    OutputTree,
-                },
+                socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -953,7 +878,7 @@ mod tests {
 
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
-                    let output = output_1::build(node.clone());
+                    let output = output_1::build(node.clone()).to_capsule();
                     let output_id = output.socket_id();
                     let output = OutputTree::Socket(output);
 
@@ -1048,7 +973,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node))
+                OutputTree::Socket(output_1::build(node).to_capsule())
             }
 
             mod output_1 {
@@ -1074,10 +999,7 @@ mod tests {
             use crate::{
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{
-                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
-                    OutputTree,
-                },
+                socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -1122,7 +1044,7 @@ mod tests {
 
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
-                    let output = output_1::build(node.clone());
+                    let output = output_1::build(node.clone()).to_capsule();
                     let output_id = output.socket_id();
                     let output = OutputTree::Socket(output);
 
@@ -1216,7 +1138,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node))
+                OutputTree::Socket(output_1::build(node).to_capsule())
             }
 
             mod output_1 {
@@ -1242,10 +1164,7 @@ mod tests {
             use crate::{
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{
-                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
-                    OutputTree,
-                },
+                socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -1290,7 +1209,7 @@ mod tests {
 
                     let input = Inputs::new(node.clone());
                     let input_id = input.input_1.get_id();
-                    let output = output_1::build(node.clone());
+                    let output = output_1::build(node.clone()).to_capsule();
                     let output_id = output.socket_id();
                     let output = OutputTree::Socket(output);
 
@@ -1384,7 +1303,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node))
+                OutputTree::Socket(output_1::build(node).to_capsule())
             }
 
             mod output_1 {
@@ -1410,10 +1329,7 @@ mod tests {
             use crate::{
                 framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
-                socket::{
-                    InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTrait,
-                    OutputTree,
-                },
+                socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
             };
@@ -1459,7 +1375,7 @@ mod tests {
                     let input = Inputs::new(node.clone());
                     let input_id_1 = input.input_1.get_id();
                     let input_id_2 = input.input_2.get_id();
-                    let output = output_1::build(node.clone());
+                    let output = output_1::build(node.clone()).to_capsule();
                     let output_id = output.socket_id();
                     let output = OutputTree::Socket(output);
 
@@ -1565,7 +1481,7 @@ mod tests {
             // Output
 
             fn give_output_tree(node: Arc<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
-                OutputTree::Socket(output_1::build(node))
+                OutputTree::Socket(output_1::build(node).to_capsule())
             }
 
             mod output_1 {

@@ -68,17 +68,17 @@ where
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
-    fn make_capsule(&self) -> OutputSocketCapsule {
+    pub fn to_capsule(&self) -> OutputSocketCapsule {
         OutputSocketCapsule {
             socket_id: self.id,
             socket_type: std::any::TypeId::of::<SocketType>(),
-            weak: self.weak.clone() as Weak<dyn OutputTrait>,
+            weak: self.weak.clone() as Weak<dyn OutputSocketTrait>,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputTrait
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputSocketCommon
     for OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     SocketType: Clone + Send + Sync + 'static,
@@ -96,10 +96,6 @@ where
 
     async fn downstream_ids(&self) -> HashSet<SocketId> {
         self.downstream.lock().await.keys().copied().collect()
-    }
-
-    fn weak(&self) -> Weak<dyn OutputTrait> {
-        self.weak.clone() as Weak<dyn OutputTrait>
     }
 
     fn socket_type(&self) -> std::any::TypeId {
@@ -136,23 +132,16 @@ where
         Ok(())
     }
 
-    async fn call(&self, frame: FrameCount) -> Box<SharedAny> {
-        let output = self.node.call(frame).await;
-
-        Box::new((self.pickup)(&output)) as Box<SharedAny>
-    }
-
     async fn clear_cache(&self) {
         // let all downstream nodes clear cache
         for (_, socket) in self.downstream.lock().await.iter() {
-            socket.clear_cache();
+            socket.clear_cache().await;
         }
     }
 }
 
 #[async_trait::async_trait]
-pub(crate) trait OutputTrait: Send + Sync {
-    // --- use from NodeField ---
+trait OutputSocketCommon: Send + Sync {
     // getters
     fn socket_id(&self) -> SocketId;
     fn socket_name(&self) -> &str;
@@ -161,22 +150,54 @@ pub(crate) trait OutputTrait: Send + Sync {
     async fn downstream_ids(&self) -> HashSet<SocketId>;
 
     // connect and disconnect
-    fn weak(&self) -> Weak<dyn OutputTrait>;
     fn socket_type(&self) -> std::any::TypeId;
     async fn connect(&self, socket: InputSocketCapsule);
     async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
     async fn disconnect_all_output(&self) -> Result<(), NodeDisconnectError>;
-
-    // --- use from InputSocket ---
-    // called by downstream socket
-    async fn call(&self, frame: FrameCount) -> Box<SharedAny>;
-
     // let all downstream nodes clear cache
     async fn clear_cache(&self);
 }
 
+#[async_trait::async_trait]
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputSocketApi
+    for OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    SocketType: Clone + Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+    // APIs that called by downstream nodes
+
+    async fn call(&self, frame: FrameCount) -> Box<SharedAny> {
+        let output = self.node.call(frame).await;
+
+        Box::new((self.pickup)(&output)) as Box<SharedAny>
+    }
+}
+
+#[async_trait::async_trait]
+trait OutputSocketApi: Send + Sync {
+    // called by downstream socket
+    async fn call(&self, frame: FrameCount) -> Box<SharedAny>;
+}
+
+#[async_trait::async_trait]
+impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput> OutputSocketTrait
+    for OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    SocketType: Clone + Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+}
+
+#[async_trait::async_trait]
+trait OutputSocketTrait: OutputSocketCommon + OutputSocketApi {}
+
 pub enum OutputTree {
-    Socket(Arc<dyn OutputTrait>),
+    Socket(OutputSocketCapsule),
     Vec(Vec<OutputTree>),
 }
 
@@ -202,7 +223,7 @@ impl OutputTree {
         NodeMemory: Send + Sync + 'static,
         NodeProcessOutput: Clone + Send + Sync + 'static,
     {
-        OutputTree::Socket(socket as Arc<dyn OutputTrait>)
+        OutputTree::Socket(socket.to_capsule())
     }
 
     pub fn vec(v: Vec<OutputTree>) -> Self {
@@ -250,17 +271,17 @@ impl OutputTree {
 impl OutputTree {
     pub fn get_socket(&self, id: SocketId) -> Option<OutputSocketCapsule> {
         match self {
-            OutputTree::Socket(s) => {
-                if s.socket_id() == id {
-                    Some(OutputSocketCapsule::from_output_trait(s.as_ref()))
+            OutputTree::Socket(socket) => {
+                if socket.socket_id() == id {
+                    Some(socket.clone())
                 } else {
                     None
                 }
             }
             OutputTree::Vec(v) => {
                 for x in v {
-                    if let Some(s) = x.get_socket(id) {
-                        return Some(s);
+                    if let Some(socket) = x.get_socket(id) {
+                        return Some(socket);
                     }
                 }
                 None
@@ -270,7 +291,7 @@ impl OutputTree {
 
     pub fn get_all_socket(&self) -> Vec<OutputSocketCapsule> {
         match self {
-            OutputTree::Socket(s) => vec![OutputSocketCapsule::from_output_trait(s.as_ref())],
+            OutputTree::Socket(socket) => vec![socket.clone()],
             OutputTree::Vec(v) => v.iter().flat_map(|x| x.get_all_socket()).collect(),
         }
     }
@@ -298,7 +319,7 @@ impl OutputTree {
 pub struct OutputSocketCapsule {
     socket_id: SocketId,
     socket_type: std::any::TypeId,
-    weak: Weak<dyn OutputTrait>,
+    weak: Weak<dyn OutputSocketTrait>,
 }
 
 impl Clone for OutputSocketCapsule {
@@ -307,16 +328,6 @@ impl Clone for OutputSocketCapsule {
             socket_id: self.socket_id,
             socket_type: self.socket_type,
             weak: self.weak.clone(),
-        }
-    }
-}
-
-impl OutputSocketCapsule {
-    fn from_output_trait(output: &dyn OutputTrait) -> Self {
-        OutputSocketCapsule {
-            socket_id: output.socket_id(),
-            socket_type: output.socket_type(),
-            weak: output.weak(),
         }
     }
 }

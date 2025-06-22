@@ -2,7 +2,7 @@ use envelope::Envelope;
 use node::framework::NodeFramework;
 use node::{
     node_core::{NodeCore, NodeCoreCommon},
-    socket::{InputGroup, InputSocket, OutputSocket, OutputTree, WeakInputSocket},
+    socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
     types::{NodeName, SocketId},
     FrameCount,
 };
@@ -82,16 +82,16 @@ struct TemplateInput {
 
 #[async_trait::async_trait]
 impl InputGroup for TemplateInput {
-    async fn get_socket(&self, id: SocketId) -> Option<WeakInputSocket> {
+    async fn get_socket(&self, id: SocketId) -> Option<InputSocketCapsule> {
         if id == self.input_1.get_id() {
-            Some(self.input_1.weak())
+            Some(self.input_1.make_capsule())
         } else {
             None
         }
     }
 
-    fn get_all_socket(&self) -> Vec<WeakInputSocket> {
-        vec![self.input_1.weak()]
+    fn get_all_socket(&self) -> Vec<InputSocketCapsule> {
+        vec![self.input_1.make_capsule()]
     }
 }
 
@@ -126,7 +126,7 @@ mod input_1 {
             None,
             (),
             Box::new(read),
-            Envelope::new_pass_through(),
+            Some(Envelope::new_pass_through()),
         )
     }
 
@@ -144,7 +144,7 @@ mod input_1 {
 // Output
 
 fn give_output_tree(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
-    OutputTree::Socket(output_1::build(node).into())
+    OutputTree::Socket(output_1::build(node).to_capsule())
 }
 
 mod output_1 {

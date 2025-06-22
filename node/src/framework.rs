@@ -163,7 +163,7 @@ pub mod template {
     // Output
 
     fn give_output_tree(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
-        OutputTree::Socket(output_1::build(node))
+        OutputTree::Socket(output_1::build(node).to_capsule())
     }
 
     mod output_1 {

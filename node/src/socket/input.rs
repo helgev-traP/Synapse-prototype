@@ -8,9 +8,8 @@ use envelope::Envelope;
 
 use crate::{
     err::{NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError},
-    framework,
     node_core::{NodeCore, NodeCoreCommon},
-    socket::{output::OutputTrait, OutputSocketCapsule},
+    socket::OutputSocketCapsule,
     types::{SharedAny, SocketId},
     FrameCount,
 };
@@ -124,7 +123,7 @@ where
             memory: RwLock::new(memory),
             reading_fn,
             frame_select_envelope: RwLock::new(
-                frame_select_envelope.unwrap_or_else(|| Envelope::new_pass_through()),
+                frame_select_envelope.unwrap_or_else(Envelope::new_pass_through),
             ),
             upstream_socket: RwLock::new(None),
         })
@@ -257,10 +256,8 @@ where
     }
 }
 
-/// Clear the cache of the input
-/// This is used in output socket to clear the cache of downstream nodes
 #[async_trait::async_trait]
-impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputSocketTrait
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputSocketCommon
     for InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
 where
     Default: Send + Sync + 'static,
@@ -270,10 +267,6 @@ where
     NodeMemory: Send + Sync + 'static,
     NodeProcessOutput: Clone + Send + Sync + 'static,
 {
-    async fn clear_cache(&self) {
-        self.node.clear_cache().await;
-    }
-
     async fn get_upstream_socket_id(&self) -> Option<SocketId> {
         InputSocket::get_upstream_socket_id(self).await
     }
@@ -327,10 +320,8 @@ where
         let Some(socket) = socket_holder.as_ref() else {
             return Err(NodeDisconnectError::NotConnected);
         };
-        if let Err(e) = socket.disconnect(self.id).await {
-            if let NodeDisconnectError::NotConnected = e {
-                println!("NodeDisconnectError: Data inconsistency occurred.");
-            }
+        if let Err(NodeDisconnectError::NotConnected) = socket.disconnect(self.id).await {
+            println!("NodeDisconnectError: Data inconsistency occurred.");
         }
 
         // clear upstream socket
@@ -341,9 +332,33 @@ where
 
         Ok(())
     }
+}
 
-    /// Disconnect without calling OutputSocket::disconnect.
-    /// This is used when OutputSocket::disconnect_all is called.
+#[async_trait::async_trait]
+trait InputSocketCommon: Send + Sync {
+    // set default value and envelope
+    async fn set_default_value(
+        &self,
+        default_value: Box<SharedAny>,
+    ) -> Result<(), UpdateInputDefaultError>;
+    async fn set_envelope(&self, envelope: Envelope) -> Result<(), UpdateInputEnvelopeError>;
+    // methods used to connect and disconnect
+    async fn get_upstream_socket_id(&self) -> Option<SocketId>;
+    async fn connect(&self, socket: OutputSocketCapsule);
+    async fn disconnect(&self) -> Result<(), NodeDisconnectError>;
+}
+
+#[async_trait::async_trait]
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputSocketApi
+    for InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    Default: Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
     async fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError> {
         *self.upstream_socket.blocking_write() = None;
 
@@ -352,21 +367,34 @@ where
 
         Ok(())
     }
+
+    async fn clear_cache(&self) {
+        self.node.clear_cache().await;
+    }
 }
 
 #[async_trait::async_trait]
-trait InputSocketTrait: Send + Sync {
-    async fn clear_cache(&self);
-    async fn get_upstream_socket_id(&self) -> Option<SocketId>;
-    async fn set_default_value(
-        &self,
-        default_value: Box<SharedAny>,
-    ) -> Result<(), UpdateInputDefaultError>;
-    async fn set_envelope(&self, envelope: Envelope) -> Result<(), UpdateInputEnvelopeError>;
-    async fn connect(&self, socket: OutputSocketCapsule);
-    async fn disconnect(&self) -> Result<(), NodeDisconnectError>;
+trait InputSocketApi: Send + Sync {
+    /// Disconnect without calling OutputSocket::disconnect.
+    /// This is used when OutputSocket::disconnect_all is called.
     async fn disconnect_called_from_upstream(&self) -> Result<(), NodeDisconnectError>;
+    async fn clear_cache(&self);
 }
+
+impl<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput> InputSocketTrait
+    for InputSocket<Default, Memory, Output, NodeInputs, NodeMemory, NodeProcessOutput>
+where
+    Default: Send + Sync + 'static,
+    Memory: Send + Sync + 'static,
+    Output: Send + Sync + 'static,
+    NodeInputs: InputGroup + Send + Sync + 'static,
+    NodeMemory: Send + Sync + 'static,
+    NodeProcessOutput: Clone + Send + Sync + 'static,
+{
+}
+
+#[async_trait::async_trait]
+trait InputSocketTrait: InputSocketCommon + InputSocketApi {}
 
 /// A capsule of InputSocket that hide the type of its generics,
 /// to transfer connection of InputSocket
