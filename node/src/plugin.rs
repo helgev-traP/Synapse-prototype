@@ -15,7 +15,7 @@ pub trait Plugin: Send + Sync + Any {
     async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]);
 }
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 pub mod template {
     use super::Plugin;
     use crate::{
@@ -27,12 +27,23 @@ pub mod template {
     use envelope::Envelope;
     use std::sync::{Arc, Weak};
 
-    // Types of Node
+    // Node
 
     type NodeMemory = ();
     type NodeOutput = String;
 
-    // Node
+    fn node_main_process<'a>(
+        name: &'a NodeName,
+        input: &'a TemplateInput,
+        _: &'a mut NodeMemory,
+        frame: FrameCount,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>> {
+        Box::pin(async move {
+            let input = input.input_1.get(frame).await;
+
+            input + " via " + name
+        })
+    }
 
     pub struct Builder;
 
@@ -52,7 +63,7 @@ pub mod template {
                 TemplateInput::new,
                 (),
                 Box::new(node_main_process),
-                give_output_tree,
+                make_output_tree,
             )
         }
 
@@ -61,23 +72,10 @@ pub mod template {
         }
     }
 
-    fn node_main_process<'a>(
-        name: &'a NodeName,
-        input: &'a TemplateInput,
-        _: &'a mut NodeMemory,
-        frame: FrameCount,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NodeOutput> + Send + 'a>> {
-        Box::pin(async move {
-            let input = input.input_1.get(frame).await;
-
-            input + " via " + name
-        })
-    }
-
     // Input
 
     struct TemplateInput {
-        input_1: Arc<input_1::Socket>,
+        input_1: Arc<input_socket::Socket>,
     }
 
     #[async_trait::async_trait]
@@ -98,14 +96,12 @@ pub mod template {
     impl TemplateInput {
         fn new(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> Self {
             Self {
-                input_1: input_1::build(node),
+                input_1: input_socket::build(node),
             }
         }
     }
 
-    // Input Sockets
-
-    mod input_1 {
+    mod input_socket {
         use super::*;
 
         // types
@@ -143,7 +139,7 @@ pub mod template {
 
     // Output
 
-    fn give_output_tree(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
+    fn make_output_tree(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
         OutputTree::new(output_1::build(node))
     }
 

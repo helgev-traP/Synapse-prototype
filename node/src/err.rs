@@ -27,6 +27,13 @@ pub enum NodeConnectionCheckError {
     NotConnected,
 }
 
+// --- Node remove errors ---
+#[derive(Debug, PartialEq)]
+pub enum NodeRemoveError {
+    NodeIdNotFound,
+    DisconnectError(NodeDisconnectError),
+}
+
 // --- Node send order, response errors ---
 #[derive(Debug, PartialEq)]
 pub enum NodeSendOrderError {}

@@ -4,7 +4,7 @@ use std::{
     sync::mpsc,
 };
 
-use node::{plugin::Plugin, node_controller::NodeController, node::NodeCommon};
+use node::{node::NodeCommon, node_controller::NodeController, plugin::Plugin};
 
 use crate::message::MessageToBackend;
 
@@ -88,7 +88,7 @@ impl ProjectManager {
                         // todo
                     }
                     crate::message::field::FieldOp::RemoveNode(node_id) => {
-                        self.node_field.remove_node(&node_id);
+                        self.node_field.remove_node(node_id).await.unwrap();
                     }
                     crate::message::field::FieldOp::Connect {
                         upstream_node,

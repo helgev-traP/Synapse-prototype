@@ -33,18 +33,26 @@ impl PluginManager {
         Ok(())
     }
 
-    pub fn get_plugin_by_id(&self, id: &PluginId) -> Option<Arc<dyn Plugin>> {
-        self.plugins.get(id).cloned()
+    pub fn get_plugin_by_id(&self, id: &PluginId) -> Option<&Arc<dyn Plugin>> {
+        self.plugins.get(id)
     }
 
-    pub fn get_plugin_by_name(&self, name: &str) -> Option<Arc<dyn Plugin>> {
+    pub fn get_plugin_by_name(&self, name: &str) -> Option<&Arc<dyn Plugin>> {
         self.name_to_id
             .get(name)
-            .and_then(|id| self.plugins.get(id).cloned())
+            .and_then(|id| self.plugins.get(id))
     }
 
     pub async fn generate_node_by_id(&self, id: &PluginId) -> Option<Arc<dyn NodeCommon>> {
         if let Some(plugin) = self.get_plugin_by_id(id) {
+            Some(plugin.build().await)
+        } else {
+            None
+        }
+    }
+
+    pub async fn generate_node_by_name(&self, name: &str) -> Option<Arc<dyn NodeCommon>> {
+        if let Some(plugin) = self.get_plugin_by_name(name) {
             Some(plugin.build().await)
         } else {
             None
