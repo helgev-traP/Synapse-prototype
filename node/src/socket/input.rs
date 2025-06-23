@@ -9,7 +9,7 @@ use envelope::Envelope;
 
 use crate::{
     err::{NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError},
-    node_core::{NodeCore, NodeCoreCommon},
+    node_core::{Node, NodeCoreCommon},
     socket::OutputSocketCapsule,
     types::{SharedAny, SocketId},
     FrameCount,
@@ -72,7 +72,7 @@ where
     name: String,
 
     // main body of node
-    node: Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+    node: Weak<Node<NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // from default value
     default_value_name: String,
@@ -103,7 +103,7 @@ where
 {
     pub fn new(
         name: &str,
-        node: &Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+        node: &Weak<Node<NodeInputs, NodeMemory, NodeProcessOutput>>,
         default_value_name: &str,
         default_value: Option<Default>,
         envelope_name: &str,

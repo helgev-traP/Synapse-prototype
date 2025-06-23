@@ -16,7 +16,7 @@ pub(crate) async fn connect(
     }
 
     // ensure the downstream socket is not connected
-    let _ = downstream.disconnect();
+    let _ = downstream.disconnect().await;
 
     upstream.connect(downstream.clone()).await;
     downstream.connect(upstream).await;

@@ -1,4 +1,4 @@
-use super::BYTES;
+use super::BYTES_IN_WORD;
 use std::any::Any;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -32,13 +32,17 @@ pub type SharedAny = dyn Any + Send + Sync + 'static;
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct NodeId(Uuid);
 
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl NodeId {
+    // Allow clippy::new_without_default to make it clear that id is generated randomly.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         NodeId(Uuid::new_v4())
-    }
-
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
     }
 
     pub fn from_string(id: &str) -> Self {
@@ -48,16 +52,17 @@ impl NodeId {
     pub fn to_binary(&self) -> Vec<u8> {
         let id_str = self.to_string();
         let len = id_str.len();
-        let mut bin = vec![0; len + BYTES];
-        bin[0..BYTES].copy_from_slice(&len.to_be_bytes());
-        bin[BYTES..].copy_from_slice(id_str.as_bytes());
+        let mut bin = vec![0; len + BYTES_IN_WORD];
+        bin[0..BYTES_IN_WORD].copy_from_slice(&len.to_be_bytes());
+        bin[BYTES_IN_WORD..].copy_from_slice(id_str.as_bytes());
         bin
     }
 
     pub fn from_binary(binary: &[u8]) -> (Self, &[u8]) {
-        let len = usize::from_be_bytes(binary[0..BYTES].try_into().unwrap());
-        let id_str = String::from_utf8(binary[BYTES..BYTES + len].to_vec()).unwrap();
-        (NodeId::from_string(&id_str), &binary[BYTES + len..])
+        let len = usize::from_be_bytes(binary[0..BYTES_IN_WORD].try_into().unwrap());
+        let id_str =
+            String::from_utf8(binary[BYTES_IN_WORD..BYTES_IN_WORD + len].to_vec()).unwrap();
+        (NodeId::from_string(&id_str), &binary[BYTES_IN_WORD + len..])
     }
 }
 
@@ -75,43 +80,53 @@ pub type NodeName = String;
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SocketId(Uuid);
 
+impl std::fmt::Display for SocketId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl SocketId {
+    // Allow clippy::new_without_default to make it clear that id is generated randomly.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         SocketId(Uuid::new_v4())
     }
 
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
-    }
-
-    pub fn from_string(id: &String) -> Self {
+    pub fn from_string(id: &str) -> Self {
         SocketId(Uuid::parse_str(id).unwrap())
     }
 
     pub fn to_binary(&self) -> Vec<u8> {
         let id_str = self.to_string();
         let len = id_str.len();
-        let mut bin = vec![0; len + BYTES];
-        bin[0..BYTES].copy_from_slice(&len.to_be_bytes());
-        bin[BYTES..].copy_from_slice(id_str.as_bytes());
+        let mut bin = vec![0; len + BYTES_IN_WORD];
+        bin[0..BYTES_IN_WORD].copy_from_slice(&len.to_be_bytes());
+        bin[BYTES_IN_WORD..].copy_from_slice(id_str.as_bytes());
         bin
     }
 
     pub fn from_binary(binary: &[u8]) -> (Self, &[u8]) {
-        let len = usize::from_be_bytes(binary[0..BYTES].try_into().unwrap());
-        let id_str = String::from_utf8(binary[BYTES..BYTES + len].to_vec()).unwrap();
-        (SocketId::from_string(&id_str), &binary[BYTES + len..])
+        let len = usize::from_be_bytes(binary[0..BYTES_IN_WORD].try_into().unwrap());
+        let id_str =
+            String::from_utf8(binary[BYTES_IN_WORD..BYTES_IN_WORD + len].to_vec()).unwrap();
+        (
+            SocketId::from_string(&id_str),
+            &binary[BYTES_IN_WORD + len..],
+        )
     }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PluginId(Uuid);
 
-impl PluginId {
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
+impl std::fmt::Display for PluginId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
+}
 
+impl PluginId {
     pub fn from_string(id: &str) -> Self {
         PluginId(Uuid::parse_str(id).unwrap())
     }
@@ -119,15 +134,19 @@ impl PluginId {
     pub fn to_binary(&self) -> Vec<u8> {
         let id_str = self.to_string();
         let len = id_str.len();
-        let mut bin = vec![0; len + BYTES];
-        bin[0..BYTES].copy_from_slice(&len.to_be_bytes());
-        bin[BYTES..].copy_from_slice(id_str.as_bytes());
+        let mut bin = vec![0; len + BYTES_IN_WORD];
+        bin[0..BYTES_IN_WORD].copy_from_slice(&len.to_be_bytes());
+        bin[BYTES_IN_WORD..].copy_from_slice(id_str.as_bytes());
         bin
     }
 
     pub fn from_binary(binary: &[u8]) -> (Self, &[u8]) {
-        let len = usize::from_be_bytes(binary[0..BYTES].try_into().unwrap());
-        let id_str = String::from_utf8(binary[BYTES..BYTES + len].to_vec()).unwrap();
-        (PluginId::from_string(&id_str), &binary[BYTES + len..])
+        let len = usize::from_be_bytes(binary[0..BYTES_IN_WORD].try_into().unwrap());
+        let id_str =
+            String::from_utf8(binary[BYTES_IN_WORD..BYTES_IN_WORD + len].to_vec()).unwrap();
+        (
+            PluginId::from_string(&id_str),
+            &binary[BYTES_IN_WORD + len..],
+        )
     }
 }

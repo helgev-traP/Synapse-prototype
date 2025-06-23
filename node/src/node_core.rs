@@ -63,7 +63,7 @@ where
 
 pub struct StopNode;
 
-pub struct NodeCore<Inputs, Memory, ProcessOutput>
+pub struct Node<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -85,7 +85,7 @@ where
 }
 
 /// constructors
-impl<Inputs, Memory, ProcessOutput> NodeCore<Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> Node<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -99,11 +99,11 @@ where
         output: FO,
     ) -> Arc<Self>
     where
-        FI: FnOnce(&Weak<NodeCore<Inputs, Memory, ProcessOutput>>) -> Inputs,
-        FO: FnOnce(&Weak<NodeCore<Inputs, Memory, ProcessOutput>>) -> OutputTree,
+        FI: FnOnce(&Weak<Node<Inputs, Memory, ProcessOutput>>) -> Inputs,
+        FO: FnOnce(&Weak<Node<Inputs, Memory, ProcessOutput>>) -> OutputTree,
     {
         Arc::new_cyclic(|weak_self| {
-            NodeCore {
+            Node {
                 id: NodeId::new(),
                 name: Arc::new(Mutex::new(name.to_string())),
                 input: Arc::new(Mutex::new(input(weak_self))),
@@ -117,7 +117,7 @@ where
 }
 
 /// main process
-impl<Inputs, Memory, ProcessOutput> NodeCore<Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> Node<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -148,7 +148,7 @@ where
 
 /// others
 /// cache, coms, updating default value of input.
-impl<Inputs, Memory, ProcessOutput> NodeCore<Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> Node<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -167,7 +167,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Inputs, Memory, ProcessOutput> NodeCoreCommon for NodeCore<Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> NodeCoreCommon for Node<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -436,6 +436,6 @@ mod tests {
         assert_eq!(cache[4].as_ref().expect("").frame, 6);
         // clear
         cache.clear();
-        assert_eq!(cache.get_first().is_none(), true);
+        assert!(cache.get_first().is_none());
     }
 }

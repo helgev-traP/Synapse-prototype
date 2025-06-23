@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     err::NodeDisconnectError,
-    node_core::NodeCore,
+    node_core::Node,
     types::{SharedAny, SocketId},
     FrameCount,
 };
@@ -29,7 +29,7 @@ where
     // call node's method to get data and pick up data
     pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
     // main body of node
-    node: Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+    node: Weak<Node<NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // downstream sockets
     downstream: tokio::sync::Mutex<HashMap<SocketId, InputSocketCapsule>>,
@@ -47,7 +47,7 @@ where
     pub fn new(
         name: &str,
         pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
-        main_body_of_node: &Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+        main_body_of_node: &Weak<Node<NodeInputs, NodeMemory, NodeProcessOutput>>,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak| OutputSocket {
             weak: weak.clone(),

@@ -4,13 +4,13 @@ use std::{
     sync::mpsc,
 };
 
-use node::{field::NodeField, framework::NodeFramework, node_core::NodeCoreCommon};
+use node::{plugin::Plugin, node_controller::NodeController, node_core::NodeCoreCommon};
 
 use crate::message::MessageToBackend;
 
 pub struct ProjectManager {
-    node_field: NodeField,
-    plugins: HashMap<TypeId, Box<dyn NodeFramework>>,
+    node_field: NodeController,
+    plugins: HashMap<TypeId, Box<dyn Plugin>>,
 
     // com
     ch_tx: mpsc::Sender<()>, // TODO: define the type
@@ -20,14 +20,14 @@ pub struct ProjectManager {
 impl ProjectManager {
     pub fn new(ch_tx: mpsc::Sender<()>, ch_rx: mpsc::Receiver<MessageToBackend>) -> Self {
         ProjectManager {
-            node_field: NodeField::new(""),
+            node_field: NodeController::new(""),
             plugins: HashMap::new(),
             ch_tx,
             ch_rx,
         }
     }
 
-    pub fn add_plugin(&mut self, plugin: Box<dyn NodeFramework>) {
+    pub fn add_plugin(&mut self, plugin: Box<dyn Plugin>) {
         let plugin_id = (*plugin).type_id();
         if self.plugins.contains_key(&plugin_id) {
             println!("ProjectManager: plugin {:?} already exists", plugin_id);

@@ -1,7 +1,7 @@
 use envelope::Envelope;
-use node::framework::NodeFramework;
+use node::plugin::Plugin;
 use node::{
-    node_core::{NodeCore, NodeCoreCommon},
+    node_core::{Node, NodeCoreCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
     types::{NodeName, SocketId},
     FrameCount,
@@ -18,13 +18,13 @@ type NodeOutput = i64;
 pub struct CurrentFrameCount;
 
 #[async_trait::async_trait]
-impl NodeFramework for CurrentFrameCount {
+impl Plugin for CurrentFrameCount {
     fn name(&self) -> &'static str {
         "current frame count"
     }
 
     async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-        NodeCore::new(
+        Node::new(
             "current frame count",
             TemplateInput::new,
             (),
@@ -73,7 +73,7 @@ impl InputGroup for TemplateInput {
 }
 
 impl TemplateInput {
-    fn new(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Self {
+    fn new(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> Self {
         Self {
             input_1: input_1::build(node),
         }
@@ -93,7 +93,7 @@ mod input_1 {
         InputSocket<Default, Memory, SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
     // build socket
-    pub fn build(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+    pub fn build(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
         InputSocket::new(
             "input",
             node,
@@ -120,7 +120,7 @@ mod input_1 {
 
 // Output
 
-fn give_output_tree(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
+fn give_output_tree(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
     OutputTree::new(output_1::build(node))
 }
 
@@ -132,7 +132,7 @@ mod output_1 {
     pub type Socket = OutputSocket<SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
     // build socket
-    pub fn build(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+    pub fn build(node: &Weak<Node<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
         OutputSocket::new("output", Box::new(pickup), node)
     }
 

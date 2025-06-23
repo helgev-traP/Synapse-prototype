@@ -1,13 +1,15 @@
-pub mod types;
-pub mod node_core;
-pub mod socket;
+pub mod plugin;
 pub mod channel;
 pub mod err;
-pub mod field;
-pub mod framework;
+pub mod node_controller;
+pub mod node_core;
+pub mod socket;
+pub mod types;
 
 // System architectures
 
-pub const BITS: usize = usize::BITS as usize;
-pub const BYTES: usize = BITS / 8;
+/// The architecture of the system.
+pub const WORD_SIZE: usize = usize::BITS as usize;
+/// How many bytes are in a word.
+pub const BYTES_IN_WORD: usize = WORD_SIZE / 8;
 pub type FrameCount = i64;

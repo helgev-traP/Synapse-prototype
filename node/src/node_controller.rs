@@ -19,7 +19,7 @@ use super::{
     types::{FromToBinary, NodeId, SharedAny, SocketId},
 };
 
-pub struct NodeField {
+pub struct NodeController {
     // information as a node
     node_id: NodeId,
     node_name: Mutex<String>,
@@ -32,9 +32,9 @@ pub struct NodeField {
     execution_stop_channel: Option<std::sync::mpsc::Sender<StopNode>>,
 }
 
-impl NodeField {
+impl NodeController {
     pub fn new(name: &str) -> Self {
-        NodeField {
+        NodeController {
             node_id: NodeId::new(),
             node_name: Mutex::new(name.to_string()),
             nodes: HashMap::new(),
@@ -358,7 +358,7 @@ impl NodeField {
 }
 
 #[async_trait::async_trait]
-impl NodeCoreCommon for NodeField {
+impl NodeCoreCommon for NodeController {
     fn get_id(&self) -> NodeId {
         self.node_id
     }
@@ -425,7 +425,7 @@ impl NodeCoreCommon for NodeField {
 }
 
 #[async_trait::async_trait]
-impl FromToBinary for NodeField {
+impl FromToBinary for NodeController {
     async fn from_binary(binary: Arc<std::sync::RwLock<&[u8]>>) -> Result<Self, ()> {
         let seek: usize = 0;
         // read node field data
@@ -445,7 +445,7 @@ impl FromToBinary for NodeField {
 
 #[cfg(test)]
 mod tests {
-    use crate::{channel::result_channel_pair, framework::NodeFramework};
+    use crate::{plugin::Plugin, channel::result_channel_pair};
 
     use super::*;
 
@@ -458,7 +458,7 @@ mod tests {
     #[rustfmt::skip]
     async fn comprehensive_test() {
         // create field
-        let mut field = NodeField::new("field");
+        let mut field = NodeController::new("field");
 
         // create nodes
         // a
@@ -634,7 +634,7 @@ mod tests {
     #[rustfmt::skip]
     async fn measure_transfer_overhead() {
         // create field
-        let mut field = NodeField::new("field");
+        let mut field = NodeController::new("field");
 
         // create
         let node_a = nodes::node_a::Builder {}.build().await;
@@ -751,7 +751,7 @@ mod tests {
     #[rustfmt::skip]
     async fn node_execution_test() {
         // create field
-        let mut field = NodeField::new("field");
+        let mut field = NodeController::new("field");
 
         // create nodes
         let node_a = nodes::node_a::Builder {}.build().await;
@@ -878,8 +878,8 @@ mod tests {
 
         pub mod node_a {
             use crate::{
-                framework::NodeFramework,
-                node_core::{NodeCore, NodeCoreCommon},
+                plugin::Plugin,
+                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -897,13 +897,13 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeFramework for Builder {
+            impl Plugin for Builder {
                 fn name(&self) -> &'static str {
                     "A"
                 }
 
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-                    (NodeCore::new(
+                    (Node::new(
                         "INPUT",
                         Inputs::new,
                         (),
@@ -949,7 +949,7 @@ mod tests {
             }
 
             impl Inputs {
-                fn new(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                fn new(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node);
                     Self { input_1 }
                 }
@@ -969,7 +969,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -996,9 +996,7 @@ mod tests {
 
             // Output
 
-            fn give_output_tree(
-                node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>,
-            ) -> OutputTree {
+            fn give_output_tree(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
                 OutputTree::new(output_1::build(node))
             }
 
@@ -1010,7 +1008,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
@@ -1023,8 +1021,8 @@ mod tests {
 
         pub mod node_b {
             use crate::{
-                framework::NodeFramework,
-                node_core::{NodeCore, NodeCoreCommon},
+                plugin::Plugin,
+                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1042,13 +1040,13 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeFramework for Builder {
+            impl Plugin for Builder {
                 fn name(&self) -> &'static str {
                     "*1"
                 }
 
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-                    NodeCore::new(
+                    Node::new(
                         "*2",
                         Inputs::new,
                         (),
@@ -1094,7 +1092,7 @@ mod tests {
             }
 
             impl Inputs {
-                fn new(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                fn new(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node);
                     Self { input_1 }
                 }
@@ -1113,7 +1111,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -1140,9 +1138,7 @@ mod tests {
 
             // Output
 
-            fn give_output_tree(
-                node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>,
-            ) -> OutputTree {
+            fn give_output_tree(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
                 OutputTree::new(output_1::build(node))
             }
 
@@ -1154,7 +1150,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
@@ -1167,8 +1163,8 @@ mod tests {
 
         pub mod node_c {
             use crate::{
-                framework::NodeFramework,
-                node_core::{NodeCore, NodeCoreCommon},
+                plugin::Plugin,
+                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1186,13 +1182,13 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeFramework for Builder {
+            impl Plugin for Builder {
                 fn name(&self) -> &'static str {
                     "*3"
                 }
 
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-                    NodeCore::new(
+                    Node::new(
                         "*3",
                         Inputs::new,
                         (),
@@ -1238,7 +1234,7 @@ mod tests {
             }
 
             impl Inputs {
-                fn new(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                fn new(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node);
                     Self { input_1 }
                 }
@@ -1257,7 +1253,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -1284,9 +1280,7 @@ mod tests {
 
             // Output
 
-            fn give_output_tree(
-                node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>,
-            ) -> OutputTree {
+            fn give_output_tree(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
                 OutputTree::new(output_1::build(node))
             }
 
@@ -1298,7 +1292,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
@@ -1311,8 +1305,8 @@ mod tests {
 
         pub mod node_d {
             use crate::{
-                framework::NodeFramework,
-                node_core::{NodeCore, NodeCoreCommon},
+                plugin::Plugin,
+                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1330,13 +1324,13 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeFramework for Builder {
+            impl Plugin for Builder {
                 fn name(&self) -> &'static str {
                     "PAW"
                 }
 
                 async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-                    NodeCore::new(
+                    Node::new(
                         "PAW",
                         Inputs::new,
                         (),
@@ -1393,7 +1387,7 @@ mod tests {
             }
 
             impl Inputs {
-                fn new(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Self {
+                fn new(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Self {
                     let input_1 = input_1::build(node);
                     let input_2 = input_1::build(node);
                     Self { input_1, input_2 }
@@ -1413,7 +1407,7 @@ mod tests {
                     InputSocket<Default, Memory, SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     InputSocket::new(
                         "input",
                         node,
@@ -1440,9 +1434,7 @@ mod tests {
 
             // Output
 
-            fn give_output_tree(
-                node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>,
-            ) -> OutputTree {
+            fn give_output_tree(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> OutputTree {
                 OutputTree::new(output_1::build(node))
             }
 
@@ -1454,7 +1446,7 @@ mod tests {
                 pub type Socket = OutputSocket<SocketType, Inputs, NodeMemory, NodeOutput>;
 
                 // build socket
-                pub fn build(node: &Weak<NodeCore<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+                pub fn build(node: &Weak<Node<Inputs, NodeMemory, NodeOutput>>) -> Arc<Socket> {
                     OutputSocket::new("output", Box::new(pickup), node)
                 }
 
