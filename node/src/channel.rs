@@ -144,10 +144,18 @@ impl<TX, TxResult, RX, RxResult> ResultChannel<TX, TxResult, RX, RxResult> {
     }
 }
 
-pub type FrontChannel =
-    ResultChannel<FrontToField, FrontToFieldResult, FieldToFront, FieldToFrontResult>;
-pub type FieldChannel =
-    ResultChannel<FieldToFront, FieldToFrontResult, FrontToField, FrontToFieldResult>;
+pub type FrontChannel = ResultChannel<
+    FrontToController,
+    FrontToControllerResult,
+    ControllerToFront,
+    ControllerToFrontResult,
+>;
+pub type ControllerChannel = ResultChannel<
+    ControllerToFront,
+    ControllerToFrontResult,
+    FrontToController,
+    FrontToControllerResult,
+>;
 
 pub fn result_channel_pair<T, TResult, S, SResult>(
     buffer: usize,
@@ -165,10 +173,10 @@ pub fn result_channel_pair<T, TResult, S, SResult>(
     )
 }
 
-// Field <-> Frontend
-pub enum FrontToField {
+// Controller <-> Frontend
+pub enum FrontToController {
     /// # Shutdown
-    /// End the main loop of the node field.
+    /// End the main loop of the node controller.
     Shutdown,
     /// # NodeConnect
     NodeConnect {
@@ -184,7 +192,7 @@ pub enum FrontToField {
         downstream_node_socket_id: SocketId,
     },
     /// # NodeDisconnectSafe
-    /// Make node field check if the connection is valid.
+    /// Make node controller check if the connection is valid.
     NodeDisconnectSafe {
         upstream_node_id: NodeId,
         upstream_node_socket_id: SocketId,
@@ -200,7 +208,7 @@ pub enum FrontToField {
     },
 }
 
-pub enum FrontToFieldResult {
+pub enum FrontToControllerResult {
     /// # ShutdownResult
     Shutdown(Result<(), ()>),
     /// # NodeConnectResult
@@ -214,9 +222,9 @@ pub enum FrontToFieldResult {
 }
 
 // todo Resultに移す
-pub enum FieldToFront {}
+pub enum ControllerToFront {}
 
-pub enum FieldToFrontResult {}
+pub enum ControllerToFrontResult {}
 
 // Node <-> Frontend
 pub enum FrontToNode {}

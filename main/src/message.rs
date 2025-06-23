@@ -1,15 +1,14 @@
 use std::any::TypeId;
 
-pub mod field;
+pub mod controller;
 
 pub enum MessageToBackend {
     // manager
     AllPlugins(TypeId),
     Shutdown,
-    // field
-    FieldReq(field::FieldReq),
-    FieldOp(field::FieldOp),
+    // controller
+    ControllerReq(controller::ControllerReq),
+    ControllerOp(controller::ControllerOp),
 }
 
-pub enum MessageFromBackend {
-}
+pub enum MessageFromBackend {}

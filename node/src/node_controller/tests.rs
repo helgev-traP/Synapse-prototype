@@ -10,8 +10,8 @@ async fn hash_map_ensure_consistency_test() {
 #[tokio::test]
     #[rustfmt::skip]
     async fn comprehensive_test() {
-        // create field
-        let mut field = NodeController::new("field");
+        // create controller
+        let mut controller = NodeController::new("controller");
 
         // create nodes
         // a
@@ -42,56 +42,56 @@ async fn hash_map_ensure_consistency_test() {
             node_d.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_d_id = node_d.get_id();
 
-        // add nodes to field
-        field.add_node(node_a);
-        field.add_node(node_b);
-        field.add_node(node_c);
-        field.add_node(node_d);
+        // add nodes to controller
+        controller.add_node(node_a);
+        controller.add_node(node_b);
+        controller.add_node(node_c);
+        controller.add_node(node_d);
 
         // check output
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(controller.controller_call(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(controller.controller_call(0, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(controller.controller_call(0, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(controller.controller_call(0, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
 
         // change default value
-        // field
+        // controller
         //     .update_input_default(node_a_id, node_a_input_id[0], Box::new(1 as i64))
         //     .await
         //     .unwrap();
-        field
+        controller
             .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1i64))
             .await
             .unwrap();
 
         // check output
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
+        assert_eq!(controller.controller_call(0, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&0));
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
+        assert_eq!(controller.controller_call(0, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
+        assert_eq!(controller.controller_call(0, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
         #[rustfmt::skip]
-        assert_eq!(field.field_call(0, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(controller.controller_call(0, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
 
         // connect nodes
-        field
+        controller
             .node_connect(
                 node_a_id,
                 node_a_output_id[0],
@@ -100,7 +100,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_a_id,
                 node_a_output_id[0],
@@ -109,7 +109,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_b_id,
                 node_b_output_id[0],
@@ -118,7 +118,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_c_id,
                 node_c_output_id[0],
@@ -129,14 +129,14 @@ async fn hash_map_ensure_consistency_test() {
             .unwrap();
 
         // check output
-        assert_eq!(field.field_call(1, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
-        assert_eq!(field.field_call(1, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
-        assert_eq!(field.field_call(1, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
-        assert_eq!(field.field_call(1, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&8));
+        assert_eq!(controller.controller_call(1, node_a_id).await.unwrap().downcast_ref::<i64>(), Some(&1));
+        assert_eq!(controller.controller_call(1, node_b_id).await.unwrap().downcast_ref::<i64>(), Some(&2));
+        assert_eq!(controller.controller_call(1, node_c_id).await.unwrap().downcast_ref::<i64>(), Some(&3));
+        assert_eq!(controller.controller_call(1, node_d_id).await.unwrap().downcast_ref::<i64>(), Some(&8));
 
         // check connection
         assert_eq!(
-            field
+            controller
                 .check_connection(
                     node_a_id,
                     node_a_output_id[0],
@@ -147,7 +147,7 @@ async fn hash_map_ensure_consistency_test() {
             Ok(())
         );
         assert_eq!(
-            field
+            controller
                 .check_connection(
                     node_a_id,
                     node_a_output_id[0],
@@ -158,7 +158,7 @@ async fn hash_map_ensure_consistency_test() {
             Ok(())
         );
         assert_eq!(
-            field
+            controller
                 .check_connection(
                     node_b_id,
                     node_b_output_id[0],
@@ -169,7 +169,7 @@ async fn hash_map_ensure_consistency_test() {
             Ok(())
         );
         assert_eq!(
-            field
+            controller
                 .check_connection(
                     node_c_id,
                     node_c_output_id[0],
@@ -184,8 +184,8 @@ async fn hash_map_ensure_consistency_test() {
 #[tokio::test]
     #[rustfmt::skip]
     async fn measure_transfer_overhead() {
-        // create field
-        let mut field = NodeController::new("field");
+        // create controller
+        let mut controller = NodeController::new("controller");
 
         // create
         let node_a = nodes::node_a::PluginA {}.build().await;
@@ -212,32 +212,32 @@ async fn hash_map_ensure_consistency_test() {
             node_d.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_d_id = node_d.get_id();
 
-        // add nodes to field
-        field.add_node(node_a);
-        field.add_node(node_b);
-        field.add_node(node_c);
-        field.add_node(node_d);
+        // add nodes to controller
+        controller.add_node(node_a);
+        controller.add_node(node_b);
+        controller.add_node(node_c);
+        controller.add_node(node_d);
 
         // change default value
-        field
+        controller
             .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1i64))
             .await
             .unwrap();
 
         // connect nodes
-        field
+        controller
             .node_connect(
                 node_a_id,
                 node_a_output_id[0],
@@ -246,7 +246,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_a_id,
                 node_a_output_id[0],
@@ -255,7 +255,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_b_id,
                 node_b_output_id[0],
@@ -264,7 +264,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_c_id,
                 node_c_output_id[0],
@@ -278,8 +278,8 @@ async fn hash_map_ensure_consistency_test() {
 
         // check output
         for i in 0..1000 {
-            let _ = field
-                .field_call(i, node_d_id)
+            let _ = controller
+                .controller_call(i, node_d_id)
                 .await
                 .unwrap()
                 .downcast_ref::<i64>();
@@ -297,8 +297,8 @@ async fn hash_map_ensure_consistency_test() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 20)]
     #[rustfmt::skip]
     async fn node_execution_test() {
-        // create field
-        let mut field = NodeController::new("field");
+        // create controller
+        let mut controller = NodeController::new("controller");
 
         // create nodes
         let node_a = nodes::node_a::PluginA {}.build().await;
@@ -325,32 +325,32 @@ async fn hash_map_ensure_consistency_test() {
             node_d.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_d_id = node_d.get_id();
 
-        // add nodes to field
-        field.add_node(node_a);
-        field.add_node(node_b);
-        field.add_node(node_c);
-        field.add_node(node_d);
+        // add nodes to controller
+        controller.add_node(node_a);
+        controller.add_node(node_b);
+        controller.add_node(node_c);
+        controller.add_node(node_d);
 
         // change default value
-        field
+        controller
             .node_update_input_default(node_b_id, node_b_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_c_id, node_c_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_d_id, node_d_input_id[0], Box::new(1i64))
             .await
             .unwrap();
-        field
+        controller
             .node_update_input_default(node_d_id, node_d_input_id[1], Box::new(1i64))
             .await
             .unwrap();
 
         // connect nodes
-        field
+        controller
             .node_connect(
                 node_a_id,
                 node_a_output_id[0],
@@ -359,7 +359,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_a_id,
                 node_a_output_id[0],
@@ -368,7 +368,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_b_id,
                 node_b_output_id[0],
@@ -377,7 +377,7 @@ async fn hash_map_ensure_consistency_test() {
             )
             .await
             .unwrap();
-        field
+        controller
             .node_connect(
                 node_c_id,
                 node_c_output_id[0],
@@ -388,13 +388,13 @@ async fn hash_map_ensure_consistency_test() {
             .unwrap();
 
         // play
-        field.field_play(0, node_d_id).await.unwrap();
+        controller.controller_play(0, node_d_id).await.unwrap();
 
         // wait
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         // stop
-        let frame = field.field_stop().await;
+        let frame = controller.controller_stop().await;
         println!("Execution stopped at frame: {:?}", frame);
     }
 

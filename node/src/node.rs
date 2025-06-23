@@ -109,7 +109,7 @@ where
                 input: Arc::new(Mutex::new(input(weak_self))),
                 memory: Arc::new(Mutex::new(memory)),
                 main_process,
-                cache: Mutex::new(Cache::new(1)), // キャッシュサイズはNodeFieldにpushする前に統一するので、初期値はなんでもいい
+                cache: Mutex::new(Cache::new(1)), // キャッシュサイズはNodeControllerにpushする前に統一するので、初期値はなんでもいい
                 output: Arc::new(Mutex::new(output(weak_self))),
             }
         })
@@ -269,7 +269,7 @@ where
 }
 
 // --- NodeCoreCommon ---
-// handle Nodes in NodeField uniformly.
+// handle Nodes in NodeController uniformly.
 #[async_trait::async_trait]
 pub trait NodeCommon: Send + Sync {
     // getters and setters
@@ -295,7 +295,7 @@ pub trait NodeCommon: Send + Sync {
     // calling one frame
     async fn call(&self, frame: FrameCount) -> Arc<SharedAny>;
     // main playing process(play)
-    /// This function returns Future to be executed by node field.
+    /// This function returns Future to be executed by node controller.
     async fn play(
         &self,
         begin_frame: FrameCount,

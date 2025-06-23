@@ -3,7 +3,7 @@ use super::{component::Component, types::color::Color, window::Window};
 pub struct App<'a, Model: Send + 'static, Message: 'static, MessageToBackend: 'static> {
     window: Window<'a, Model, Message>,
 
-    // dummy field to store channel
+    // dummy controller to store channel
     rx: Option<std::sync::mpsc::Receiver<Message>>,
     tx: Option<std::sync::mpsc::Sender<MessageToBackend>>,
 }

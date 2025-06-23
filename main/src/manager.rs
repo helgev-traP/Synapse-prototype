@@ -9,7 +9,7 @@ use node::{node::NodeCommon, node_controller::NodeController, plugin::Plugin};
 use crate::message::MessageToBackend;
 
 pub struct ProjectManager {
-    node_field: NodeController,
+    node_controller: NodeController,
     plugins: HashMap<TypeId, Box<dyn Plugin>>,
 
     // com
@@ -20,7 +20,7 @@ pub struct ProjectManager {
 impl ProjectManager {
     pub fn new(ch_tx: mpsc::Sender<()>, ch_rx: mpsc::Receiver<MessageToBackend>) -> Self {
         ProjectManager {
-            node_field: NodeController::new(""),
+            node_controller: NodeController::new(""),
             plugins: HashMap::new(),
             ch_tx,
             ch_rx,
@@ -53,51 +53,51 @@ impl ProjectManager {
 
             match msg {
                 MessageToBackend::Shutdown => {
-                    if self.node_field.field_is_playing() {
-                        self.node_field.field_stop().await;
+                    if self.node_controller.controller_is_playing() {
+                        self.node_controller.controller_stop().await;
                     }
                     break;
                 }
                 MessageToBackend::AllPlugins(plugin_id) => {
                     if let Some(plugin) = self.plugins.get(&plugin_id) {
-                        self.node_field.add_node(plugin.build().await);
+                        self.node_controller.add_node(plugin.build().await);
                     }
                 }
-                MessageToBackend::FieldReq(field_req) => match field_req {
-                    crate::message::field::FieldReq::Id => {
-                        let id = self.node_field.get_id();
+                MessageToBackend::ControllerReq(controller_req) => match controller_req {
+                    crate::message::controller::ControllerReq::Id => {
+                        let id = self.node_controller.get_id();
                         // TODO: send id to frontend
                         todo!()
                     }
-                    crate::message::field::FieldReq::Name => {
-                        let name = self.node_field.get_name().await.clone();
+                    crate::message::controller::ControllerReq::Name => {
+                        let name = self.node_controller.get_name().await.clone();
                         // TODO: send name to frontend
                         todo!()
                     }
-                    crate::message::field::FieldReq::AllNodes(vec) => todo!(),
-                    crate::message::field::FieldReq::CacheDepth { node } => todo!(),
+                    crate::message::controller::ControllerReq::AllNodes(vec) => todo!(),
+                    crate::message::controller::ControllerReq::CacheDepth { node } => todo!(),
                 },
-                MessageToBackend::FieldOp(field_op) => match field_op {
-                    crate::message::field::FieldOp::AddNode(plugin_id) => {
+                MessageToBackend::ControllerOp(controller_op) => match controller_op {
+                    crate::message::controller::ControllerOp::AddNode(plugin_id) => {
                         let Some(plugin) = self.plugins.get(&plugin_id) else {
                             todo!()
                         };
 
-                        self.node_field.add_node(plugin.build().await);
+                        self.node_controller.add_node(plugin.build().await);
 
                         // todo
                     }
-                    crate::message::field::FieldOp::RemoveNode(node_id) => {
-                        self.node_field.remove_node(node_id).await.unwrap();
+                    crate::message::controller::ControllerOp::RemoveNode(node_id) => {
+                        self.node_controller.remove_node(node_id).await.unwrap();
                     }
-                    crate::message::field::FieldOp::Connect {
+                    crate::message::controller::ControllerOp::Connect {
                         upstream_node,
                         upstream_socket,
                         downstream_node,
                         downstream_socket,
                     } => {
                         match self
-                            .node_field
+                            .node_controller
                             .node_connect(
                                 upstream_node,
                                 upstream_socket,
@@ -115,14 +115,14 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::ConservativeConnect {
+                    crate::message::controller::ControllerOp::ConservativeConnect {
                         upstream_node,
                         upstream_socket,
                         downstream_node,
                         downstream_socket,
                     } => {
                         match self
-                            .node_field
+                            .node_controller
                             .node_conservative_connect(
                                 upstream_node,
                                 upstream_socket,
@@ -140,12 +140,12 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::Disconnect {
+                    crate::message::controller::ControllerOp::Disconnect {
                         downstream_node,
                         downstream_socket,
                     } => {
                         match self
-                            .node_field
+                            .node_controller
                             .node_disconnect(downstream_node, downstream_socket)
                             .await
                         {
@@ -157,14 +157,14 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::ConservativeDisconnect {
+                    crate::message::controller::ControllerOp::ConservativeDisconnect {
                         upstream_node,
                         upstream_socket,
                         downstream_node,
                         downstream_socket,
                     } => {
                         match self
-                            .node_field
+                            .node_controller
                             .node_conservative_disconnect(
                                 upstream_node,
                                 upstream_socket,
@@ -181,14 +181,14 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::CheckConnection {
+                    crate::message::controller::ControllerOp::CheckConnection {
                         upstream_node,
                         upstream_socket,
                         downstream_node,
                         downstream_socket,
                     } => {
                         match self
-                            .node_field
+                            .node_controller
                             .check_connection(
                                 upstream_node,
                                 upstream_socket,
@@ -206,9 +206,12 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::DisconnectAllFromOutput { node, socket } => {
+                    crate::message::controller::ControllerOp::DisconnectAllFromOutput {
+                        node,
+                        socket,
+                    } => {
                         match self
-                            .node_field
+                            .node_controller
                             .node_disconnect_all_from_output(node, socket)
                             .await
                         {
@@ -220,8 +223,8 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::DisconnectAll { node } => {
-                        match self.node_field.node_disconnect_all(node).await {
+                    crate::message::controller::ControllerOp::DisconnectAll { node } => {
+                        match self.node_controller.node_disconnect_all(node).await {
                             Ok(_) => (),
                             Err(e) => match e {
                                 node::err::NodeDisconnectError::NotConnected => todo!(),
@@ -230,13 +233,13 @@ impl ProjectManager {
                             },
                         }
                     }
-                    crate::message::field::FieldOp::UpdateInputDefault {
+                    crate::message::controller::ControllerOp::UpdateInputDefault {
                         node,
                         socket,
                         default,
                     } => {
                         if let Err(e) = self
-                            .node_field
+                            .node_controller
                             .node_update_input_default(node, socket, default)
                             .await
                         {
@@ -252,26 +255,26 @@ impl ProjectManager {
                             }
                         }
                     }
-                    crate::message::field::FieldOp::CacheClear(node_id) => todo!(),
-                    crate::message::field::FieldOp::CacheSetDepth { node, depth } => todo!(),
-                    crate::message::field::FieldOp::CacheClearAll => todo!(),
-                    crate::message::field::FieldOp::CacheSetDepthAll(depth) => todo!(),
-                    crate::message::field::FieldOp::Call { node, frame } => {
-                        match self.node_field.field_call(frame, node).await {
+                    crate::message::controller::ControllerOp::CacheClear(node_id) => todo!(),
+                    crate::message::controller::ControllerOp::CacheSetDepth { node, depth } => todo!(),
+                    crate::message::controller::ControllerOp::CacheClearAll => todo!(),
+                    crate::message::controller::ControllerOp::CacheSetDepthAll(depth) => todo!(),
+                    crate::message::controller::ControllerOp::Call { node, frame } => {
+                        match self.node_controller.controller_call(frame, node).await {
                             Ok(_) => {
                                 // todo
                             }
                             Err(_) => todo!(),
                         }
                     }
-                    crate::message::field::FieldOp::Play { node, frame } => {
-                        match self.node_field.field_play(frame, node).await {
+                    crate::message::controller::ControllerOp::Play { node, frame } => {
+                        match self.node_controller.controller_play(frame, node).await {
                             Ok(_) => todo!(),
                             Err(_) => todo!(),
                         }
                     }
-                    crate::message::field::FieldOp::Stop => {
-                        self.node_field.field_stop().await;
+                    crate::message::controller::ControllerOp::Stop => {
+                        self.node_controller.controller_stop().await;
                     }
                 },
             }

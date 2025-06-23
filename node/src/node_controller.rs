@@ -45,7 +45,7 @@ impl NodeController {
         }
     }
 
-    // field operations
+    // controller operations
 
     pub fn add_node(&mut self, node: Arc<dyn NodeCommon>) {
         self.nodes.insert(node.get_id(), node);
@@ -60,9 +60,7 @@ impl NodeController {
 
                 Ok(())
             }
-            Err(NodeDisconnectError::NodeIdNotFound) => {
-                Err(NodeRemoveError::NodeIdNotFound)
-            }
+            Err(NodeDisconnectError::NodeIdNotFound) => Err(NodeRemoveError::NodeIdNotFound),
             Err(NodeDisconnectError::SocketIdNotFound) => Err(NodeRemoveError::DisconnectError(
                 NodeDisconnectError::SocketIdNotFound,
             )),
@@ -322,7 +320,7 @@ impl NodeController {
 
     // main process
 
-    pub async fn field_call(
+    pub async fn controller_call(
         &self,
         frame: FrameCount,
         node_id: NodeId,
@@ -335,7 +333,11 @@ impl NodeController {
     }
 
     // todo implement return value
-    pub async fn field_play(&mut self, begin_frame: FrameCount, node_id: NodeId) -> Result<(), ()> {
+    pub async fn controller_play(
+        &mut self,
+        begin_frame: FrameCount,
+        node_id: NodeId,
+    ) -> Result<(), ()> {
         if let Some(node) = self.nodes.get(&node_id) {
             let (tx, rx) = std::sync::mpsc::channel();
 
@@ -351,11 +353,11 @@ impl NodeController {
         }
     }
 
-    pub fn field_is_playing(&self) -> bool {
+    pub fn controller_is_playing(&self) -> bool {
         self.execution_handle.is_some()
     }
 
-    pub async fn field_stop(&mut self) -> FrameCount {
+    pub async fn controller_stop(&mut self) -> FrameCount {
         if let Some(tx) = self.execution_stop_channel.take() {
             tx.send(StopNode).unwrap();
         }
@@ -441,13 +443,13 @@ impl NodeController {
         binary: Arc<std::sync::RwLock<&[u8]>>,
     ) -> Result<Self, ()> {
         let seek: usize = 0;
-        // read node field data
+        // read node controller data
         todo!();
 
         // read nodes data
         todo!();
 
-        // add nodes to node field
+        // add nodes to node controller
         todo!();
     }
 

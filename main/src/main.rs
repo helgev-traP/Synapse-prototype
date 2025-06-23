@@ -13,7 +13,7 @@ fn main() {
     let (message_to_backend_tx, message_to_backend_rx) = std::sync::mpsc::channel();
     let (message_to_frontend_tx, message_to_frontend_rx) = std::sync::mpsc::channel();
 
-    // build backend manager / node field
+    // build backend manager / node controller
     let mut manager = ProjectManager::new(message_to_frontend_tx, message_to_backend_rx);
     for plugin in plugin::give_all_plugins() {
         manager.add_plugin(plugin);
