@@ -6,7 +6,7 @@ use std::{
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
-    node_core::StopNode,
+    node::StopNode,
     socket::{InputSocketCapsule, OutputSocketCapsule},
     FrameCount,
 };
@@ -15,7 +15,7 @@ use super::{
     err::{
         NodeConnectError, NodeConnectionCheckError, NodeDisconnectError, UpdateInputDefaultError,
     },
-    node_core::NodeCoreCommon,
+    node::NodeCommon,
     types::{FromToBinary, NodeId, SharedAny, SocketId},
 };
 
@@ -25,7 +25,7 @@ pub struct NodeController {
     node_name: Mutex<String>,
 
     // nodes
-    nodes: HashMap<NodeId, Arc<dyn NodeCoreCommon>>,
+    nodes: HashMap<NodeId, Arc<dyn NodeCommon>>,
 
     // handle of node execution
     execution_handle: Option<tokio::task::JoinHandle<FrameCount>>,
@@ -45,7 +45,7 @@ impl NodeController {
 
     // field operations
 
-    pub fn add_node(&mut self, node: Arc<dyn NodeCoreCommon>) {
+    pub fn add_node(&mut self, node: Arc<dyn NodeCommon>) {
         self.nodes.insert(node.get_id(), node);
     }
 
@@ -358,7 +358,7 @@ impl NodeController {
 }
 
 #[async_trait::async_trait]
-impl NodeCoreCommon for NodeController {
+impl NodeCommon for NodeController {
     fn get_id(&self) -> NodeId {
         self.node_id
     }
@@ -445,7 +445,7 @@ impl FromToBinary for NodeController {
 
 #[cfg(test)]
 mod tests {
-    use crate::{plugin::Plugin, channel::result_channel_pair};
+    use crate::{channel::result_channel_pair, plugin::Plugin};
 
     use super::*;
 
@@ -878,7 +878,11 @@ mod tests {
 
         pub mod node_a {
             use crate::{
-                node_core::{Node, NodeCoreCommon}, plugin::Plugin, socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree}, types::{NodeName, PluginId, SocketId}, FrameCount
+                node::{Node, NodeCommon},
+                plugin::Plugin,
+                socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
+                types::{NodeName, PluginId, SocketId},
+                FrameCount,
             };
             use envelope::Envelope;
             use std::sync::{Arc, Weak};
@@ -902,7 +906,7 @@ mod tests {
                     PluginId::from_string("fe600d8d-465c-b0fb-2dde-337e65598ee3")
                 }
 
-                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCommon> {
                     (Node::new(
                         "INPUT",
                         Inputs::new,
@@ -912,7 +916,7 @@ mod tests {
                     )) as _
                 }
 
-                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                     todo!()
                 }
             }
@@ -1021,8 +1025,8 @@ mod tests {
 
         pub mod node_b {
             use crate::{
+                node::{Node, NodeCommon},
                 plugin::Plugin,
-                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1049,7 +1053,7 @@ mod tests {
                     crate::types::PluginId::from_string("9a2f7e5c-4946-ee07-b298-c92eca0ce1f0")
                 }
 
-                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCommon> {
                     Node::new(
                         "*2",
                         Inputs::new,
@@ -1059,7 +1063,7 @@ mod tests {
                     )
                 }
 
-                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                     todo!()
                 }
             }
@@ -1167,8 +1171,8 @@ mod tests {
 
         pub mod node_c {
             use crate::{
+                node::{Node, NodeCommon},
                 plugin::Plugin,
-                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1195,7 +1199,7 @@ mod tests {
                     crate::types::PluginId::from_string("a786a1c0-8103-2355-27d8-5962d459f450")
                 }
 
-                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCommon> {
                     Node::new(
                         "*3",
                         Inputs::new,
@@ -1205,7 +1209,7 @@ mod tests {
                     )
                 }
 
-                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                     todo!()
                 }
             }
@@ -1313,8 +1317,8 @@ mod tests {
 
         pub mod node_d {
             use crate::{
+                node::{Node, NodeCommon},
                 plugin::Plugin,
-                node_core::{Node, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
                 FrameCount,
@@ -1341,7 +1345,7 @@ mod tests {
                     crate::types::PluginId::from_string("1ae64590-4520-8a70-f576-aa8b6cb08d18")
                 }
 
-                async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+                async fn build(&self) -> Arc<dyn NodeCommon> {
                     Node::new(
                         "PAW",
                         Inputs::new,
@@ -1351,7 +1355,7 @@ mod tests {
                     )
                 }
 
-                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+                async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                     todo!()
                 }
             }

@@ -167,7 +167,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Inputs, Memory, ProcessOutput> NodeCoreCommon for Node<Inputs, Memory, ProcessOutput>
+impl<Inputs, Memory, ProcessOutput> NodeCommon for Node<Inputs, Memory, ProcessOutput>
 where
     Inputs: InputGroup + Send + Sync + 'static,
     Memory: Send + Sync + 'static,
@@ -271,7 +271,7 @@ where
 // --- NodeCoreCommon ---
 // handle Nodes in NodeField uniformly.
 #[async_trait::async_trait]
-pub trait NodeCoreCommon: Send + Sync {
+pub trait NodeCommon: Send + Sync {
     // getters and setters
     fn get_id(&self) -> NodeId;
     async fn get_name<'a>(&'a self) -> MutexGuard<'a, String>;

@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     err::NodeDisconnectError,
-    node_core::Node,
+    node::Node,
     types::{SharedAny, SocketId},
     FrameCount,
 };

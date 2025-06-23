@@ -9,7 +9,7 @@ use envelope::Envelope;
 
 use crate::{
     err::{NodeDisconnectError, UpdateInputDefaultError, UpdateInputEnvelopeError},
-    node_core::{Node, NodeCoreCommon},
+    node::{Node, NodeCommon},
     socket::OutputSocketCapsule,
     types::{SharedAny, SocketId},
     FrameCount,

@@ -4,7 +4,7 @@ use std::{
     sync::mpsc,
 };
 
-use node::{plugin::Plugin, node_controller::NodeController, node_core::NodeCoreCommon};
+use node::{plugin::Plugin, node_controller::NodeController, node::NodeCommon};
 
 use crate::message::MessageToBackend;
 

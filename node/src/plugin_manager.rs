@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{node_core::NodeCoreCommon, plugin::Plugin, types::PluginId};
+use crate::{node::NodeCommon, plugin::Plugin, types::PluginId};
 
 #[derive(Default)]
 pub struct PluginManager {
@@ -43,7 +43,7 @@ impl PluginManager {
             .and_then(|id| self.plugins.get(id).cloned())
     }
 
-    pub async fn generate_node_by_id(&self, id: &PluginId) -> Option<Arc<dyn NodeCoreCommon>> {
+    pub async fn generate_node_by_id(&self, id: &PluginId) -> Option<Arc<dyn NodeCommon>> {
         if let Some(plugin) = self.get_plugin_by_id(id) {
             Some(plugin.build().await)
         } else {

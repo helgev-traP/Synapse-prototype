@@ -1,7 +1,7 @@
 use envelope::Envelope;
 use node::plugin::Plugin;
 use node::{
-    node_core::{Node, NodeCoreCommon},
+    node::{Node, NodeCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
     types::{NodeName, SocketId},
     FrameCount,
@@ -27,7 +27,7 @@ impl Plugin for CurrentFrameCount {
         node::types::PluginId::from_string("73206a88-7fa1-24a8-437e-154976de2c47")
     }
 
-    async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+    async fn build(&self) -> Arc<dyn NodeCommon> {
         Node::new(
             "current frame count",
             TemplateInput::new,
@@ -37,7 +37,7 @@ impl Plugin for CurrentFrameCount {
         )
     }
 
-    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
         todo!()
     }
 }

@@ -2,24 +2,24 @@ use std::{any::Any, sync::Arc};
 
 use crate::types::PluginId;
 
-use super::node_core::NodeCoreCommon;
+use super::node::NodeCommon;
 
 #[async_trait::async_trait]
 pub trait Plugin: Send + Sync + Any {
     /// The name of the plugin.
     fn name(&self) -> &'static str;
     /// The unique identifier of the plugin.
-    /// uuid-v7 
+    /// uuid-v7
     fn plugin_id(&self) -> PluginId;
-    async fn build(&self) -> Arc<dyn NodeCoreCommon>;
-    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]);
+    async fn build(&self) -> Arc<dyn NodeCommon>;
+    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]);
 }
 
 #[cfg(test)]
 pub mod template {
     use super::Plugin;
     use crate::{
-        node_core::{Node, NodeCoreCommon},
+        node::{Node, NodeCommon},
         socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
         types::{NodeName, PluginId, SocketId},
         FrameCount,
@@ -46,7 +46,7 @@ pub mod template {
             PluginId::from_string("12345678-1234-1234-1234-123456789012")
         }
 
-        async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+        async fn build(&self) -> Arc<dyn NodeCommon> {
             Node::new(
                 "Template",
                 TemplateInput::new,
@@ -56,7 +56,7 @@ pub mod template {
             )
         }
 
-        async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+        async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
             todo!()
         }
     }

@@ -2,7 +2,7 @@ use envelope::Envelope;
 use node::plugin::Plugin;
 use node::types::PluginId;
 use node::{
-    node_core::{Node, NodeCoreCommon},
+    node::{Node, NodeCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
     types::{NodeName, SocketId},
     FrameCount,
@@ -28,7 +28,7 @@ impl Plugin for I64ToString {
         PluginId::from_string("472866e3-f751-560b-47cd-31a08d3a7c78")
     }
 
-    async fn build(&self) -> Arc<dyn NodeCoreCommon> {
+    async fn build(&self) -> Arc<dyn NodeCommon> {
         Node::new(
             "i64 to string",
             TemplateInput::new,
@@ -38,7 +38,7 @@ impl Plugin for I64ToString {
         )
     }
 
-    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
+    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
         todo!()
     }
 }
