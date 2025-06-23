@@ -1,5 +1,6 @@
 use envelope::Envelope;
 use node::plugin::Plugin;
+use node::types::PluginId;
 use node::{
     node_core::{Node, NodeCoreCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
@@ -21,6 +22,10 @@ pub struct I64ToString;
 impl Plugin for I64ToString {
     fn name(&self) -> &'static str {
         "i64 to string"
+    }
+
+    fn plugin_id(&self) -> PluginId {
+        PluginId::from_string("472866e3-f751-560b-47cd-31a08d3a7c78")
     }
 
     async fn build(&self) -> Arc<dyn NodeCoreCommon> {

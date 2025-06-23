@@ -1,8 +1,9 @@
-pub mod plugin;
 pub mod channel;
 pub mod err;
 pub mod node_controller;
 pub mod node_core;
+pub mod plugin;
+pub mod plugin_manager;
 pub mod socket;
 pub mod types;
 

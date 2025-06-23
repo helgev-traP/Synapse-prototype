@@ -23,6 +23,10 @@ impl Plugin for CurrentFrameCount {
         "current frame count"
     }
 
+    fn plugin_id(&self) -> node::types::PluginId {
+        node::types::PluginId::from_string("73206a88-7fa1-24a8-437e-154976de2c47")
+    }
+
     async fn build(&self) -> Arc<dyn NodeCoreCommon> {
         Node::new(
             "current frame count",

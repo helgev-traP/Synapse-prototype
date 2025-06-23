@@ -1,10 +1,16 @@
 use std::{any::Any, sync::Arc};
 
+use crate::types::PluginId;
+
 use super::node_core::NodeCoreCommon;
 
 #[async_trait::async_trait]
 pub trait Plugin: Send + Sync + Any {
+    /// The name of the plugin.
     fn name(&self) -> &'static str;
+    /// The unique identifier of the plugin.
+    /// uuid-v7 
+    fn plugin_id(&self) -> PluginId;
     async fn build(&self) -> Arc<dyn NodeCoreCommon>;
     async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]);
 }
@@ -15,7 +21,7 @@ pub mod template {
     use crate::{
         node_core::{Node, NodeCoreCommon},
         socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
-        types::{NodeName, SocketId},
+        types::{NodeName, PluginId, SocketId},
         FrameCount,
     };
     use envelope::Envelope;
@@ -36,6 +42,10 @@ pub mod template {
             "Template"
         }
 
+        fn plugin_id(&self) -> PluginId {
+            PluginId::from_string("12345678-1234-1234-1234-123456789012")
+        }
+
         async fn build(&self) -> Arc<dyn NodeCoreCommon> {
             Node::new(
                 "Template",
@@ -45,25 +55,6 @@ pub mod template {
                 give_output_tree,
             )
         }
-
-        // #[cfg(debug_assertions)]
-        // async fn build_debug(
-        //     &self,
-        // ) -> (
-        //     Arc<dyn NodeCoreCommon>,
-        //     Vec<crate::types::SocketId>,
-        //     Vec<crate::types::SocketId>,
-        // ) {
-        //     let node = NodeCore::new(
-        //         "Template Debug",
-        //         TemplateInput::new,
-        //         (),
-        //         Box::new(node_main_process),
-        //         give_output_tree,
-        //     );
-
-        //     (node, vec![], vec![])
-        // }
 
         async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
             todo!()
