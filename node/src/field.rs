@@ -445,7 +445,7 @@ impl FromToBinary for NodeField {
 
 #[cfg(test)]
 mod tests {
-    use crate::{channel::result_channel_pair, framework::NodeBuilder};
+    use crate::{channel::result_channel_pair, framework::NodeFramework};
 
     use super::*;
 
@@ -878,7 +878,7 @@ mod tests {
 
         pub mod node_a {
             use crate::{
-                framework::NodeBuilder,
+                framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
@@ -897,7 +897,7 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeBuilder for Builder {
+            impl NodeFramework for Builder {
                 fn name(&self) -> &'static str {
                     "A"
                 }
@@ -1023,7 +1023,7 @@ mod tests {
 
         pub mod node_b {
             use crate::{
-                framework::NodeBuilder,
+                framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
@@ -1042,7 +1042,7 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeBuilder for Builder {
+            impl NodeFramework for Builder {
                 fn name(&self) -> &'static str {
                     "*1"
                 }
@@ -1167,7 +1167,7 @@ mod tests {
 
         pub mod node_c {
             use crate::{
-                framework::NodeBuilder,
+                framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
@@ -1186,7 +1186,7 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeBuilder for Builder {
+            impl NodeFramework for Builder {
                 fn name(&self) -> &'static str {
                     "*3"
                 }
@@ -1311,7 +1311,7 @@ mod tests {
 
         pub mod node_d {
             use crate::{
-                framework::NodeBuilder,
+                framework::NodeFramework,
                 node_core::{NodeCore, NodeCoreCommon},
                 socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
                 types::{NodeName, SocketId},
@@ -1330,7 +1330,7 @@ mod tests {
             pub struct Builder;
 
             #[async_trait::async_trait]
-            impl NodeBuilder for Builder {
+            impl NodeFramework for Builder {
                 fn name(&self) -> &'static str {
                     "PAW"
                 }

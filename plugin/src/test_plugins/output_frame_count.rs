@@ -1,5 +1,5 @@
 use envelope::Envelope;
-use node::framework::NodeBuilder;
+use node::framework::NodeFramework;
 use node::{
     node_core::{NodeCore, NodeCoreCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
@@ -18,7 +18,7 @@ type NodeOutput = i64;
 pub struct CurrentFrameCount;
 
 #[async_trait::async_trait]
-impl NodeBuilder for CurrentFrameCount {
+impl NodeFramework for CurrentFrameCount {
     fn name(&self) -> &'static str {
         "current frame count"
     }

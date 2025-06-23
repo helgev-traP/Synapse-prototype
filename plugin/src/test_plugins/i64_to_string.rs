@@ -1,5 +1,5 @@
 use envelope::Envelope;
-use node::framework::NodeBuilder;
+use node::framework::NodeFramework;
 use node::{
     node_core::{NodeCore, NodeCoreCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
@@ -18,7 +18,7 @@ type NodeOutput = String;
 pub struct I64ToString;
 
 #[async_trait::async_trait]
-impl NodeBuilder for I64ToString {
+impl NodeFramework for I64ToString {
     fn name(&self) -> &'static str {
         "i64 to string"
     }
