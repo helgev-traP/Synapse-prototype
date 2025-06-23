@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     any::Any,
     sync::{Arc, Weak},
@@ -71,7 +72,7 @@ where
     name: String,
 
     // main body of node
-    node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+    node: Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // from default value
     default_value_name: String,
@@ -102,7 +103,7 @@ where
 {
     pub fn new(
         name: &str,
-        node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+        node: &Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
         default_value_name: &str,
         default_value: Option<Default>,
         envelope_name: &str,
@@ -115,7 +116,7 @@ where
             weak: weak.clone(),
             id: SocketId::new(),
             name: name.to_string(),
-            node,
+            node: node.clone(),
             default_value_name: default_value_name.to_string(),
             default_value: default_value.map(RwLock::new),
             envelope_name: envelope_name.to_string(),
@@ -369,7 +370,11 @@ where
     }
 
     async fn clear_cache(&self) {
-        self.node.clear_cache().await;
+        let Some(node) = self.node.upgrade() else {
+            panic!("InputSocket: NodeCore is not available. NodeCore stores sockets so it should not be None here. Doubt this Arc<{{socket}}> are cloned wrongly.");
+        };
+
+        node.clear_cache().await;
     }
 }
 

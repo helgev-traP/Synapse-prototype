@@ -29,7 +29,7 @@ where
     // call node's method to get data and pick up data
     pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
     // main body of node
-    node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+    node: Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
 
     // downstream sockets
     downstream: tokio::sync::Mutex<HashMap<SocketId, InputSocketCapsule>>,
@@ -47,32 +47,25 @@ where
     pub fn new(
         name: &str,
         pickup: Box<dyn Fn(&NodeProcessOutput) -> SocketType + Send + Sync>,
-        main_body_of_node: Arc<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
+        main_body_of_node: &Weak<NodeCore<NodeInputs, NodeMemory, NodeProcessOutput>>,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak| OutputSocket {
             weak: weak.clone(),
             id: SocketId::new(),
             name: name.to_string(),
             pickup,
-            node: main_body_of_node,
+            node: main_body_of_node.clone(),
             downstream: tokio::sync::Mutex::new(HashMap::new()),
         })
     }
-}
 
-impl<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
-    OutputSocket<SocketType, NodeInputs, NodeMemory, NodeProcessOutput>
-where
-    SocketType: Clone + Send + Sync + 'static,
-    NodeInputs: InputGroup + Send + Sync + 'static,
-    NodeMemory: Send + Sync + 'static,
-    NodeProcessOutput: Clone + Send + Sync + 'static,
-{
-    pub fn to_capsule(&self) -> OutputSocketCapsule {
+    fn to_capsule(self: &Arc<Self>) -> OutputSocketCapsule {
+        let strong = self.weak.upgrade().expect("");
+
         OutputSocketCapsule {
             socket_id: self.id,
             socket_type: std::any::TypeId::of::<SocketType>(),
-            weak: self.weak.clone() as Weak<dyn OutputSocketTrait>,
+            arc: WeakOrStrong::Strong(strong),
         }
     }
 }
@@ -146,6 +139,9 @@ trait OutputSocketCommon: Send + Sync {
     fn socket_id(&self) -> SocketId;
     fn socket_name(&self) -> &str;
 
+    // // pack in OutputSocketCapsule
+    // fn to_capsule(self: Arc<Self>) -> OutputSocketCapsule;
+
     // get downstream ids
     async fn downstream_ids(&self) -> HashSet<SocketId>;
 
@@ -154,6 +150,7 @@ trait OutputSocketCommon: Send + Sync {
     async fn connect(&self, socket: InputSocketCapsule);
     async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError>;
     async fn disconnect_all_output(&self) -> Result<(), NodeDisconnectError>;
+
     // let all downstream nodes clear cache
     async fn clear_cache(&self);
 }
@@ -170,7 +167,11 @@ where
     // APIs that called by downstream nodes
 
     async fn call(&self, frame: FrameCount) -> Box<SharedAny> {
-        let output = self.node.call(frame).await;
+        let Some(node) = self.node.upgrade() else {
+            panic!("OutputSocket: NodeCore is not available. NodeCore stores sockets so it should not be None here. Doubt this Arc<{{socket}}> are cloned wrongly.");
+        };
+
+        let output = node.call(frame).await;
 
         Box::new((self.pickup)(&output)) as Box<SharedAny>
     }
@@ -273,7 +274,7 @@ impl OutputTree {
         match self {
             OutputTree::Socket(socket) => {
                 if socket.socket_id() == id {
-                    Some(socket.clone())
+                    Some(socket.downgrade())
                 } else {
                     None
                 }
@@ -291,7 +292,7 @@ impl OutputTree {
 
     pub fn get_all_socket(&self) -> Vec<OutputSocketCapsule> {
         match self {
-            OutputTree::Socket(socket) => vec![socket.clone()],
+            OutputTree::Socket(socket) => vec![socket.downgrade()],
             OutputTree::Vec(v) => v.iter().flat_map(|x| x.get_all_socket()).collect(),
         }
     }
@@ -314,12 +315,28 @@ impl OutputTree {
     }
 }
 
-// WeakOutputSocket
+// OutputSocketCapsule
 // to transfer OutputSocket to another thread
 pub struct OutputSocketCapsule {
     socket_id: SocketId,
     socket_type: std::any::TypeId,
-    weak: Weak<dyn OutputSocketTrait>,
+    // weak: Weak<dyn OutputSocketTrait>,
+    arc: WeakOrStrong<dyn OutputSocketTrait>,
+}
+
+#[derive(Clone)]
+enum WeakOrStrong<T: ?Sized> {
+    Weak(Weak<T>),
+    Strong(Arc<T>),
+}
+
+impl<T: ?Sized> WeakOrStrong<T> {
+    pub fn upgrade(&self) -> Option<Arc<T>> {
+        match self {
+            WeakOrStrong::Weak(weak) => weak.upgrade(),
+            WeakOrStrong::Strong(strong) => Some(strong.clone()),
+        }
+    }
 }
 
 impl Clone for OutputSocketCapsule {
@@ -327,7 +344,23 @@ impl Clone for OutputSocketCapsule {
         OutputSocketCapsule {
             socket_id: self.socket_id,
             socket_type: self.socket_type,
-            weak: self.weak.clone(),
+            arc: match &self.arc {
+                WeakOrStrong::Weak(weak) => WeakOrStrong::Weak(weak.clone()),
+                WeakOrStrong::Strong(strong) => WeakOrStrong::Strong(strong.clone()),
+            },
+        }
+    }
+}
+
+impl OutputSocketCapsule {
+    pub fn downgrade(&self) -> OutputSocketCapsule {
+        OutputSocketCapsule {
+            socket_id: self.socket_id,
+            socket_type: self.socket_type,
+            arc: WeakOrStrong::Weak(match &self.arc {
+                WeakOrStrong::Weak(weak) => weak.clone(),
+                WeakOrStrong::Strong(strong) => Arc::downgrade(strong),
+            }),
         }
     }
 }
@@ -344,7 +377,7 @@ impl OutputSocketCapsule {
     pub async fn downstream_ids(&self) -> HashSet<SocketId> {
         // todo: add error handling when weak reference is invalid
 
-        if let Some(output) = self.weak.upgrade() {
+        if let Some(output) = self.arc.upgrade() {
             output.downstream_ids().await
         } else {
             todo!()
@@ -354,7 +387,7 @@ impl OutputSocketCapsule {
     pub async fn connect(&self, socket: InputSocketCapsule) {
         // todo: add error handling when weak reference is invalid
 
-        if let Some(output) = self.weak.upgrade() {
+        if let Some(output) = self.arc.upgrade() {
             output.connect(socket).await;
         }
     }
@@ -362,7 +395,7 @@ impl OutputSocketCapsule {
     pub async fn disconnect(&self, downstream_id: SocketId) -> Result<(), NodeDisconnectError> {
         // todo: add error handling when weak reference is invalid
 
-        if let Some(output) = self.weak.upgrade() {
+        if let Some(output) = self.arc.upgrade() {
             output.disconnect(downstream_id).await
         } else {
             todo!()
@@ -372,7 +405,7 @@ impl OutputSocketCapsule {
     pub async fn disconnect_all_output(&self) -> Result<(), NodeDisconnectError> {
         // todo: add error handling when weak reference is invalid
 
-        if let Some(output) = self.weak.upgrade() {
+        if let Some(output) = self.arc.upgrade() {
             output.disconnect_all_output().await
         } else {
             todo!()
@@ -382,7 +415,7 @@ impl OutputSocketCapsule {
     pub async fn call(&self, frame: FrameCount) -> Box<SharedAny> {
         // todo: add error handling when weak reference is invalid
 
-        if let Some(output) = self.weak.upgrade() {
+        if let Some(output) = self.arc.upgrade() {
             output.call(frame).await
         } else {
             todo!()
@@ -392,7 +425,7 @@ impl OutputSocketCapsule {
     pub async fn clear_cache(&self) {
         // todo: add error handling when weak reference is invalid
 
-        if let Some(output) = self.weak.upgrade() {
+        if let Some(output) = self.arc.upgrade() {
             output.clear_cache().await;
         }
     }

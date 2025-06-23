@@ -1,14 +1,16 @@
-use std::{any::{Any, TypeId}, collections::HashMap, sync::mpsc};
-
-use node::{
-    field::NodeField, framework::NodeFramework, node_core::NodeCoreCommon
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    sync::mpsc,
 };
+
+use node::{field::NodeField, framework::NodeBuilder, node_core::NodeCoreCommon};
 
 use crate::message::MessageToBackend;
 
 pub struct ProjectManager {
     node_field: NodeField,
-    plugins: HashMap<TypeId, Box<dyn NodeFramework>>,
+    plugins: HashMap<TypeId, Box<dyn NodeBuilder>>,
 
     // com
     ch_tx: mpsc::Sender<()>, // TODO: define the type
@@ -25,13 +27,17 @@ impl ProjectManager {
         }
     }
 
-    pub fn add_plugin(&mut self, plugin: Box<dyn NodeFramework>) {
+    pub fn add_plugin(&mut self, plugin: Box<dyn NodeBuilder>) {
         let plugin_id = (*plugin).type_id();
         if self.plugins.contains_key(&plugin_id) {
             println!("ProjectManager: plugin {:?} already exists", plugin_id);
             return;
         }
-        println!("ProjectManager: add plugin {:?} {}", plugin_id, plugin.name());
+        println!(
+            "ProjectManager: add plugin {:?} {}",
+            plugin_id,
+            plugin.name()
+        );
         self.plugins.insert(plugin_id, plugin);
     }
 
@@ -236,9 +242,13 @@ impl ProjectManager {
                         {
                             match e {
                                 node::err::UpdateInputDefaultError::NodeIdNotFound(any) => todo!(),
-                                node::err::UpdateInputDefaultError::SocketIdNotFound(any) => todo!(),
+                                node::err::UpdateInputDefaultError::SocketIdNotFound(any) => {
+                                    todo!()
+                                }
                                 node::err::UpdateInputDefaultError::TypeRejected(any) => todo!(),
-                                node::err::UpdateInputDefaultError::DefaultValueNotEnabled(any) => todo!(),
+                                node::err::UpdateInputDefaultError::DefaultValueNotEnabled(any) => {
+                                    todo!()
+                                }
                             }
                         }
                     }
@@ -250,19 +260,19 @@ impl ProjectManager {
                         match self.node_field.field_call(frame, node).await {
                             Ok(_) => {
                                 // todo
-                            },
+                            }
                             Err(_) => todo!(),
                         }
-                    },
+                    }
                     crate::message::field::FieldOp::Play { node, frame } => {
                         match self.node_field.field_play(frame, node).await {
                             Ok(_) => todo!(),
                             Err(_) => todo!(),
                         }
-                    },
+                    }
                     crate::message::field::FieldOp::Stop => {
                         self.node_field.field_stop().await;
-                    },
+                    }
                 },
             }
         }

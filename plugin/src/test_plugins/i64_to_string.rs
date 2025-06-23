@@ -1,12 +1,12 @@
 use envelope::Envelope;
-use node::framework::NodeFramework;
+use node::framework::NodeBuilder;
 use node::{
     node_core::{NodeCore, NodeCoreCommon},
     socket::{InputGroup, InputSocket, InputSocketCapsule, OutputSocket, OutputTree},
     types::{NodeName, SocketId},
     FrameCount,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 // Types of Node
 
@@ -18,42 +18,19 @@ type NodeOutput = String;
 pub struct I64ToString;
 
 #[async_trait::async_trait]
-impl NodeFramework for I64ToString {
+impl NodeBuilder for I64ToString {
     fn name(&self) -> &'static str {
         "i64 to string"
     }
 
     async fn build(&self) -> Arc<dyn NodeCoreCommon> {
-        let node = Arc::new(NodeCore::new(
+        NodeCore::new(
             "i64 to string",
+            TemplateInput::new,
             (),
             Box::new(node_main_process),
-        ));
-
-        let input = TemplateInput::new(node.clone());
-        let output = give_output_tree(node.clone());
-
-        node.set_input(input).await;
-        node.set_output(output).await;
-
-        node
-    }
-
-    #[cfg(debug_assertions)]
-    async fn build_debug(&self) -> (Arc<dyn NodeCoreCommon>, Vec<SocketId>, Vec<SocketId>) {
-        let node = Arc::new(NodeCore::new(
-            "i64 to string debug",
-            (),
-            Box::new(node_main_process),
-        ));
-
-        let input = TemplateInput::new(node.clone());
-        let output = give_output_tree(node.clone());
-
-        node.set_input(input).await;
-        node.set_output(output).await;
-
-        (node, vec![], vec![])
+            give_output_tree,
+        )
     }
 
     async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCoreCommon>, &[u8]) {
@@ -96,14 +73,14 @@ impl InputGroup for TemplateInput {
 }
 
 impl TemplateInput {
-    fn new(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Self {
+    fn new(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Self {
         Self {
-            input_1: input_1::build(node.clone()),
+            input_1: input_1::build(node),
         }
     }
 }
 
-// Input Sockets
+// Input
 
 mod input_1 {
     use super::*;
@@ -116,7 +93,7 @@ mod input_1 {
         InputSocket<Default, Memory, SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
     // build socket
-    pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+    pub fn build(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
         InputSocket::new(
             "input",
             node,
@@ -143,8 +120,8 @@ mod input_1 {
 
 // Output
 
-fn give_output_tree(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
-    OutputTree::Socket(output_1::build(node).to_capsule())
+fn give_output_tree(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> OutputTree {
+    OutputTree::new(output_1::build(node))
 }
 
 mod output_1 {
@@ -155,7 +132,7 @@ mod output_1 {
     pub type Socket = OutputSocket<SocketType, TemplateInput, NodeMemory, NodeOutput>;
 
     // build socket
-    pub fn build(node: Arc<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
+    pub fn build(node: &Weak<NodeCore<TemplateInput, NodeMemory, NodeOutput>>) -> Arc<Socket> {
         OutputSocket::new("output", Box::new(pickup), node)
     }
 

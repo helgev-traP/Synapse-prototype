@@ -1,4 +1,7 @@
-use std::{ops::Index, sync::Arc};
+use std::{
+    ops::Index,
+    sync::{Arc, Weak},
+};
 
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -70,7 +73,7 @@ where
     id: NodeId,
     name: Arc<Mutex<String>>,
     // input
-    input: Arc<Mutex<Option<Inputs>>>,
+    input: Arc<Mutex<Inputs>>,
     // memory
     memory: Arc<Mutex<Memory>>,
     // main process
@@ -78,7 +81,7 @@ where
     // cache
     cache: Mutex<Cache<ProcessOutput>>,
     // output
-    output: Arc<Mutex<Option<OutputTree>>>,
+    output: Arc<Mutex<OutputTree>>,
 }
 
 /// constructors
@@ -88,28 +91,28 @@ where
     Memory: Send + Sync + 'static,
     ProcessOutput: Send + Sync + 'static,
 {
-    pub fn new(
+    pub fn new<FI, FO>(
         name: &str,
+        input: FI,
         memory: Memory,
         main_process: Box<dyn NodeFn<Inputs, Memory, ProcessOutput>>,
-    ) -> Self {
-        NodeCore {
-            id: NodeId::new(),
-            name: Arc::new(Mutex::new(name.to_string())),
-            input: Arc::new(Mutex::new(None)),
-            memory: Arc::new(tokio::sync::Mutex::new(memory)),
-            main_process,
-            cache: Mutex::new(Cache::new(1)), // キャッシュサイズはNodeFieldにpushする前に統一するので、初期値はなんでもいい
-            output: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    pub async fn set_input(&self, input: Inputs) {
-        *self.input.lock().await = Some(input);
-    }
-
-    pub async fn set_output(&self, output: OutputTree) {
-        *self.output.lock().await = Some(output);
+        output: FO,
+    ) -> Arc<Self>
+    where
+        FI: FnOnce(&Weak<NodeCore<Inputs, Memory, ProcessOutput>>) -> Inputs,
+        FO: FnOnce(&Weak<NodeCore<Inputs, Memory, ProcessOutput>>) -> OutputTree,
+    {
+        Arc::new_cyclic(|weak_self| {
+            NodeCore {
+                id: NodeId::new(),
+                name: Arc::new(Mutex::new(name.to_string())),
+                input: Arc::new(Mutex::new(input(weak_self))),
+                memory: Arc::new(Mutex::new(memory)),
+                main_process,
+                cache: Mutex::new(Cache::new(1)), // キャッシュサイズはNodeFieldにpushする前に統一するので、初期値はなんでもいい
+                output: Arc::new(Mutex::new(output(weak_self))),
+            }
+        })
     }
 }
 
@@ -134,12 +137,7 @@ where
 
         let output = self
             .main_process
-            .call(
-                &*name,
-                &*input.as_ref().expect("input is not set."),
-                &mut *memory,
-                frame,
-            )
+            .call(&name, &input, &mut *memory, frame)
             .await;
 
         cache.push(frame, output);
@@ -188,13 +186,7 @@ where
     }
 
     async fn change_cache_depth(&self, new_cache_size: usize) {
-        let number_of_output = self
-            .output
-            .lock()
-            .await
-            .as_ref()
-            .expect("input is not set.")
-            .size();
+        let number_of_output = self.output.lock().await.size();
         self.cache
             .lock()
             .await
@@ -205,20 +197,13 @@ where
         self.cache.lock().await.clear();
 
         // send cache clear to downstream
-        for socket in self.output.lock().await.as_ref().unwrap().get_all_socket() {
+        for socket in self.output.lock().await.get_all_socket() {
             socket.clear_cache().await;
         }
     }
 
     async fn cache_depth(&self) -> usize {
-        self.cache.lock().await.len()
-            / self
-                .output
-                .lock()
-                .await
-                .as_ref()
-                .expect("input is not set.")
-                .size()
+        self.cache.lock().await.len() / self.output.lock().await.size()
     }
 
     async fn cache_size(&self) -> usize {
@@ -226,40 +211,19 @@ where
     }
 
     async fn get_input_socket(&self, socket_id: SocketId) -> Option<InputSocketCapsule> {
-        self.input
-            .lock()
-            .await
-            .as_ref()
-            .expect("input is not set.")
-            .get_socket(socket_id)
-            .await
+        self.input.lock().await.get_socket(socket_id).await
     }
 
     async fn get_output_socket(&self, socket_id: SocketId) -> Option<OutputSocketCapsule> {
-        self.output
-            .lock()
-            .await
-            .as_ref()
-            .expect("input is not set.")
-            .get_socket(socket_id)
+        self.output.lock().await.get_socket(socket_id)
     }
 
     async fn get_all_output_socket(&self) -> Vec<OutputSocketCapsule> {
-        self.output
-            .lock()
-            .await
-            .as_ref()
-            .expect("input is not set.")
-            .get_all_socket()
+        self.output.lock().await.get_all_socket()
     }
 
     async fn get_all_input_socket(&self) -> Vec<InputSocketCapsule> {
-        self.input
-            .lock()
-            .await
-            .as_ref()
-            .expect("input is not set.")
-            .get_all_socket()
+        self.input.lock().await.get_all_socket()
     }
 
     async fn update_input_default(
@@ -268,25 +232,12 @@ where
         default: Box<SharedAny>,
     ) -> Result<(), UpdateInputDefaultError> {
         let input = self.input.lock().await;
-        match input
-            .as_ref()
-            .expect("input is not set.")
-            .get_socket(input_socket_id)
-            .await
-        {
+        match input.get_socket(input_socket_id).await {
             Some(socket) => {
-                socket
-                    .set_default_value(default)
-                    .await?;
+                socket.set_default_value(default).await?;
                 // clear cache
                 self.cache.lock().await.clear();
-                self.output
-                    .lock()
-                    .await
-                    .as_ref()
-                    .expect("input is not set.")
-                    .clear_cache()
-                    .await;
+                self.output.lock().await.clear_cache().await;
                 Ok(())
             }
             None => Err(UpdateInputDefaultError::SocketIdNotFound(default)),
@@ -380,7 +331,7 @@ impl<T> Index<usize> for Cache<T> {
     type Output = Option<CacheData<T>>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        return &self.ring_buffer[(self.buffer_index + index) % self.buffer_size];
+        &self.ring_buffer[(self.buffer_index + index) % self.buffer_size]
     }
 }
 
