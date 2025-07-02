@@ -60,7 +60,7 @@ impl ProjectManager {
                 }
                 MessageToBackend::AllPlugins(plugin_id) => {
                     if let Some(plugin) = self.plugins.get(&plugin_id) {
-                        self.node_controller.add_node(plugin.build().await);
+                        self.node_controller.add_node(plugin.build());
                     }
                 }
                 MessageToBackend::ControllerReq(controller_req) => match controller_req {
@@ -83,7 +83,7 @@ impl ProjectManager {
                             todo!()
                         };
 
-                        self.node_controller.add_node(plugin.build().await);
+                        self.node_controller.add_node(plugin.build());
 
                         // todo
                     }
@@ -256,7 +256,9 @@ impl ProjectManager {
                         }
                     }
                     crate::message::controller::ControllerOp::CacheClear(node_id) => todo!(),
-                    crate::message::controller::ControllerOp::CacheSetDepth { node, depth } => todo!(),
+                    crate::message::controller::ControllerOp::CacheSetDepth { node, depth } => {
+                        todo!()
+                    }
                     crate::message::controller::ControllerOp::CacheClearAll => todo!(),
                     crate::message::controller::ControllerOp::CacheSetDepthAll(depth) => todo!(),
                     crate::message::controller::ControllerOp::Call { node, frame } => {

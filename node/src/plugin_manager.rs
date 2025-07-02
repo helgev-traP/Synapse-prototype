@@ -43,17 +43,17 @@ impl PluginManager {
             .and_then(|id| self.plugins.get(id))
     }
 
-    pub async fn generate_node_by_id(&self, id: &PluginId) -> Option<Arc<dyn NodeCommon>> {
+    pub fn generate_node_by_id(&self, id: &PluginId) -> Option<Arc<dyn NodeCommon>> {
         if let Some(plugin) = self.get_plugin_by_id(id) {
-            Some(plugin.build().await)
+            Some(plugin.build())
         } else {
             None
         }
     }
 
-    pub async fn generate_node_by_name(&self, name: &str) -> Option<Arc<dyn NodeCommon>> {
+    pub fn generate_node_by_name(&self, name: &str) -> Option<Arc<dyn NodeCommon>> {
         if let Some(plugin) = self.get_plugin_by_name(name) {
-            Some(plugin.build().await)
+            Some(plugin.build())
         } else {
             None
         }

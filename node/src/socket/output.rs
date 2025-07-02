@@ -324,6 +324,7 @@ pub struct OutputSocketCapsule {
     arc: WeakOrStrong<dyn OutputSocketTrait>,
 }
 
+/// Have strong reference only in OutputTree
 #[derive(Clone)]
 enum WeakOrStrong<T: ?Sized> {
     Weak(Weak<T>),

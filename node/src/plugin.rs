@@ -11,8 +11,8 @@ pub trait Plugin: Send + Sync + Any {
     /// The unique identifier of the plugin.
     /// uuid-v7
     fn plugin_id(&self) -> PluginId;
-    async fn build(&self) -> Arc<dyn NodeCommon>;
-    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]);
+    fn build(&self) -> Arc<dyn NodeCommon>;
+    fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]);
 }
 
 #[cfg(debug_assertions)]
@@ -57,7 +57,7 @@ pub mod template {
             PluginId::from_string("12345678-1234-1234-1234-123456789012")
         }
 
-        async fn build(&self) -> Arc<dyn NodeCommon> {
+        fn build(&self) -> Arc<dyn NodeCommon> {
             Node::new(
                 "Template",
                 TemplateInput::new,
@@ -67,7 +67,7 @@ pub mod template {
             )
         }
 
-        async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+        fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
             todo!()
         }
     }

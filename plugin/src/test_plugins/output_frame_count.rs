@@ -27,7 +27,7 @@ impl Plugin for CurrentFrameCount {
         node::types::PluginId::from_string("73206a88-7fa1-24a8-437e-154976de2c47")
     }
 
-    async fn build(&self) -> Arc<dyn NodeCommon> {
+    fn build(&self) -> Arc<dyn NodeCommon> {
         Node::new(
             "current frame count",
             TemplateInput::new,
@@ -37,7 +37,7 @@ impl Plugin for CurrentFrameCount {
         )
     }
 
-    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+    fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
         todo!()
     }
 }

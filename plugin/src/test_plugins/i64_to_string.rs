@@ -28,7 +28,7 @@ impl Plugin for I64ToString {
         PluginId::from_string("472866e3-f751-560b-47cd-31a08d3a7c78")
     }
 
-    async fn build(&self) -> Arc<dyn NodeCommon> {
+    fn build(&self) -> Arc<dyn NodeCommon> {
         Node::new(
             "i64 to string",
             TemplateInput::new,
@@ -38,7 +38,7 @@ impl Plugin for I64ToString {
         )
     }
 
-    async fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+    fn build_from_binary(&self, binary: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
         todo!()
     }
 }

@@ -15,13 +15,13 @@ async fn hash_map_ensure_consistency_test() {
 
         // create nodes
         // a
-        let node_a = nodes::node_a::PluginA {}.build().await;
+        let node_a = nodes::node_a::PluginA {}.build();
         let node_a_output_id =
             node_a.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_a_id = node_a.get_id();
 
         // b
-        let node_b = nodes::node_b::PluginB {}.build().await;
+        let node_b = nodes::node_b::PluginB {}.build();
         let node_b_input_id =
             node_b.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_b_output_id =
@@ -29,7 +29,7 @@ async fn hash_map_ensure_consistency_test() {
         let node_b_id = node_b.get_id();
 
         // c
-        let node_c = nodes::node_c::PluginC {}.build().await;
+        let node_c = nodes::node_c::PluginC {}.build();
         let node_c_input_id =
             node_c.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_c_output_id =
@@ -37,7 +37,7 @@ async fn hash_map_ensure_consistency_test() {
         let node_c_id = node_c.get_id();
 
         // d
-        let node_d = nodes::node_d::PluginD {}.build().await;
+        let node_d = nodes::node_d::PluginD {}.build();
         let node_d_input_id =
             node_d.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_d_id = node_d.get_id();
@@ -188,26 +188,26 @@ async fn hash_map_ensure_consistency_test() {
         let mut controller = NodeController::new("controller");
 
         // create
-        let node_a = nodes::node_a::PluginA {}.build().await;
+        let node_a = nodes::node_a::PluginA {}.build();
         let node_a_output_id =
             node_a.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_a_id = node_a.get_id();
 
-        let node_b = nodes::node_b::PluginB {}.build().await;
+        let node_b = nodes::node_b::PluginB {}.build();
         let node_b_input_id =
             node_b.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_b_output_id =
             node_b.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_b_id = node_b.get_id();
 
-        let node_c = nodes::node_c::PluginC {}.build().await;
+        let node_c = nodes::node_c::PluginC {}.build();
         let node_c_input_id =
             node_c.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_c_output_id =
             node_c.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_c_id = node_c.get_id();
 
-        let node_d = nodes::node_d::PluginD {}.build().await;
+        let node_d = nodes::node_d::PluginD {}.build();
         let node_d_input_id =
             node_d.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_d_id = node_d.get_id();
@@ -301,26 +301,26 @@ async fn hash_map_ensure_consistency_test() {
         let mut controller = NodeController::new("controller");
 
         // create nodes
-        let node_a = nodes::node_a::PluginA {}.build().await;
+        let node_a = nodes::node_a::PluginA {}.build();
         let node_a_output_id =
             node_a.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_a_id = node_a.get_id();
 
-        let node_b = nodes::node_b::PluginB {}.build().await;
+        let node_b = nodes::node_b::PluginB {}.build();
         let node_b_input_id =
             node_b.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_b_output_id =
             node_b.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_b_id = node_b.get_id();
 
-        let node_c = nodes::node_c::PluginC {}.build().await;
+        let node_c = nodes::node_c::PluginC {}.build();
         let node_c_input_id =
             node_c.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_c_output_id =
             node_c.get_all_output_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_c_id = node_c.get_id();
 
-        let node_d = nodes::node_d::PluginD {}.build().await;
+        let node_d = nodes::node_d::PluginD {}.build();
         let node_d_input_id =
             node_d.get_all_input_socket().await.iter().map(|s| s.socket_id()).collect::<Vec<_>>();
         let node_d_id = node_d.get_id();
@@ -449,7 +449,7 @@ mod nodes {
                 PluginId::from_string("fe600d8d-465c-b0fb-2dde-337e65598ee3")
             }
 
-            async fn build(&self) -> Arc<dyn NodeCommon> {
+            fn build(&self) -> Arc<dyn NodeCommon> {
                 (Node::new(
                     "INPUT",
                     Inputs::new,
@@ -459,7 +459,7 @@ mod nodes {
                 )) as _
             }
 
-            async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+            fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                 todo!()
             }
         }
@@ -595,7 +595,7 @@ mod nodes {
                 crate::types::PluginId::from_string("9a2f7e5c-4946-ee07-b298-c92eca0ce1f0")
             }
 
-            async fn build(&self) -> Arc<dyn NodeCommon> {
+            fn build(&self) -> Arc<dyn NodeCommon> {
                 Node::new(
                     "*2",
                     Inputs::new,
@@ -605,7 +605,7 @@ mod nodes {
                 )
             }
 
-            async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+            fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                 todo!()
             }
         }
@@ -740,7 +740,7 @@ mod nodes {
                 crate::types::PluginId::from_string("a786a1c0-8103-2355-27d8-5962d459f450")
             }
 
-            async fn build(&self) -> Arc<dyn NodeCommon> {
+            fn build(&self) -> Arc<dyn NodeCommon> {
                 Node::new(
                     "*3",
                     Inputs::new,
@@ -750,7 +750,7 @@ mod nodes {
                 )
             }
 
-            async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+            fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                 todo!()
             }
         }
@@ -885,7 +885,7 @@ mod nodes {
                 crate::types::PluginId::from_string("1ae64590-4520-8a70-f576-aa8b6cb08d18")
             }
 
-            async fn build(&self) -> Arc<dyn NodeCommon> {
+            fn build(&self) -> Arc<dyn NodeCommon> {
                 Node::new(
                     "PAW",
                     Inputs::new,
@@ -895,7 +895,7 @@ mod nodes {
                 )
             }
 
-            async fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
+            fn build_from_binary(&self, _: &[u8]) -> (Box<dyn NodeCommon>, &[u8]) {
                 todo!()
             }
         }
